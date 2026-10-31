@@ -74,14 +74,6 @@ pub fn remove_prompt() -> &'static str {
     }
 }
 
-pub fn already_installed() -> &'static str {
-    if russian() {
-        "OpenRDP уже установлен и запускается при входе."
-    } else {
-        "OpenRDP is already installed and starts at login."
-    }
-}
-
 pub fn broker_skipped() -> &'static str {
     if russian() {
         "Служба окна входа не установлена. Сервер запустится после входа в систему."
@@ -90,12 +82,32 @@ pub fn broker_skipped() -> &'static str {
     }
 }
 
-pub fn grant_permissions() -> &'static str {
+pub fn admin_coming() -> &'static str {
     if russian() {
-        "OpenRDP установлен. Разрешите запись экрана и универсальный доступ для OpenRDP, затем перезапустите его."
+        "Сейчас macOS спросит пароль администратора этого Mac. Он нужен один раз, чтобы после перезагрузки можно было подключиться ещё на экране входа."
     } else {
-        "OpenRDP is installed. Allow Screen Recording and Accessibility for OpenRDP, then restart it."
+        "macOS will now ask for this Mac's administrator password. It is needed once, so a restart can still be reached at the login window."
     }
+}
+
+pub fn next_button() -> &'static str {
+    if russian() {
+        "Дальше"
+    } else {
+        "Continue"
+    }
+}
+
+pub fn check_button() -> &'static str {
+    if russian() {
+        "Проверить"
+    } else {
+        "Check"
+    }
+}
+
+fn cancel_button() -> &'static str {
+    if russian() { "Отмена" } else { "Cancel" }
 }
 
 pub fn need_account() -> &'static str {
@@ -124,6 +136,24 @@ pub fn note(message: &str) -> anyhow::Result<()> {
     );
     let _ = osascript(&script)?;
     Ok(())
+}
+
+/// `true` when the continue button was pressed. Cancel and a closed dialog are
+/// `false`.
+pub fn proceed(message: &str, button: &str) -> anyhow::Result<bool> {
+    let output = osascript(&proceed_script(message, cancel_button(), button))?;
+    Ok(output.status.success())
+}
+
+pub fn proceed_script(message: &str, cancel: &str, button: &str) -> String {
+    format!(
+        "display dialog {} buttons {{{}, {}}} default button {} cancel button {} with title \"OpenRDP\"",
+        apple(message),
+        apple(cancel),
+        apple(button),
+        apple(button),
+        apple(cancel),
+    )
 }
 
 /// Runs `command` as root. The system shows its own password dialog.
@@ -202,6 +232,15 @@ mod tests {
     #[test]
     fn apple_escapes_a_newline() {
         assert_eq!(apple("a\nb"), "\"a\\nb\"");
+    }
+
+    #[test]
+    fn proceed_dialog_defaults_to_the_continue_button() {
+        let script = proceed_script("Включите переключатель", "Отмена", "Проверить");
+        assert!(script.contains("buttons {\"Отмена\", \"Проверить\"}"));
+        assert!(script.contains("default button \"Проверить\""));
+        assert!(script.contains("cancel button \"Отмена\""));
+        assert!(script.contains("with title \"OpenRDP\""));
     }
 
     #[test]
