@@ -61,11 +61,12 @@ hdiutil attach "$rw" >/dev/null
 attached=1
 cp -R "$app" "$mount/OpenRDP.app"
 ln -s /Applications "$mount/Applications"
-mkdir -p "$mount/.background"
-swift "$root/scripts/dmg-background.swift" "$mount/.background/background.png"
-chflags hidden "$mount/.background"
+# The picture lives inside the app, so the window has no extra folder to draw.
+swift "$root/scripts/dmg-background.swift" "$mount/OpenRDP.app/Contents/Resources/background.png"
 
 # Finder draws the window. A runner without a desktop still ships a usable image.
+# Icon positions are the top-left of a 128-point icon. Both share one y so they
+# sit on the same line, with room below for the names.
 if osascript <<EOF
 tell application "Finder"
   tell disk "$vol"
@@ -73,17 +74,27 @@ tell application "Finder"
     set current view of container window to icon view
     set toolbar visible of container window to false
     set statusbar visible of container window to false
-    set the bounds of container window to {200, 80, 960, 640}
+    set the bounds of container window to {200, 80, 960, 660}
     set viewOptions to the icon view options of container window
     set arrangement of viewOptions to not arranged
     set icon size of viewOptions to 128
-    set background picture of viewOptions to file ".background:background.png"
-    set position of item "OpenRDP.app" of container window to {200, 360}
-    set position of item "Applications" of container window to {560, 360}
+    set text size of viewOptions to 13
+    set background picture of viewOptions to file "OpenRDP.app:Contents:Resources:background.png"
+    try
+      set visible of item ".fseventsd" of container window to false
+    end try
+    set position of item "OpenRDP.app" of container window to {160, 250}
+    set position of item "Applications" of container window to {500, 250}
     close
     open
     update without registering applications
     delay 2
+    set the bounds of container window to {200, 80, 960, 660}
+    try
+      set visible of item ".fseventsd" of container window to false
+    end try
+    set position of item "OpenRDP.app" of container window to {160, 250}
+    set position of item "Applications" of container window to {500, 250}
     close
   end tell
 end tell
@@ -94,6 +105,7 @@ else
   echo "warning: Finder did not arrange the window; the image still contains the app and Applications" >&2
 fi
 
+rm -rf "$mount/.fseventsd"
 sync
 hdiutil detach "$mount" -quiet
 attached=0

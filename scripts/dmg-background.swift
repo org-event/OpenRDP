@@ -3,8 +3,9 @@
 //
 //   swift scripts/dmg-background.swift <output.png>
 //
-// The picture is 760×560 points. scripts/make-dmg.sh uses the same window
-// and places the icons on the arrow.
+// The picture is 760×580 points. scripts/make-dmg.sh uses the same window.
+// Finder's icon position is the top-left of a 128-point icon, so the arrow
+// sits 64 points below that, through the middle of the two icons.
 
 import AppKit
 
@@ -14,10 +15,10 @@ guard CommandLine.arguments.count == 2 else {
 }
 
 let width: CGFloat = 760
-let height: CGFloat = 560
-let arrowY: CGFloat = 360
-let arrowStart: CGFloat = 292
-let arrowEnd: CGFloat = 468
+let height: CGFloat = 580
+let arrowY: CGFloat = 314
+let arrowStart: CGFloat = 310
+let arrowEnd: CGFloat = 470
 
 let image = NSImage(size: NSSize(width: width, height: height), flipped: true) { _ in
     NSColor(srgbRed: 0.961, green: 0.961, blue: 0.969, alpha: 1).setFill()
