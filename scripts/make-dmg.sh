@@ -61,6 +61,8 @@ hdiutil attach "$rw" >/dev/null
 attached=1
 cp -R "$app" "$mount/OpenRDP.app"
 ln -s /Applications "$mount/Applications"
+printf '%s\n' 'xattr -dr com.apple.quarantine /Applications/OpenRDP.app' \
+  > "$mount/Paste in Terminal.txt"
 # The picture lives inside the app, so the window has no extra folder to draw.
 # Its stdout is the same 8-point grid the picture was drawn on.
 swift "$root/scripts/dmg-background.swift" \
@@ -93,6 +95,7 @@ tell application "Finder"
     end try
     set position of item "OpenRDP.app" of container window to {${icon_left}, ${icon_top}}
     set position of item "Applications" of container window to {${icon_right}, ${icon_top}}
+    set position of item "Paste in Terminal.txt" of container window to {${text_x}, ${text_y}}
     close
     open
     update without registering applications
@@ -103,6 +106,7 @@ tell application "Finder"
     end try
     set position of item "OpenRDP.app" of container window to {${icon_left}, ${icon_top}}
     set position of item "Applications" of container window to {${icon_right}, ${icon_top}}
+    set position of item "Paste in Terminal.txt" of container window to {${text_x}, ${text_y}}
     close
   end tell
 end tell

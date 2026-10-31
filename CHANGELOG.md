@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- The disk image includes `Paste in Terminal.txt` with the quarantine command, so the line can be copied. It is no longer only painted on the window.
+
 ## [1.3.6] - 2026-10-31
 
 ### Fixed

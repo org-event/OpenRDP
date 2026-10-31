@@ -32,9 +32,13 @@ let arrowEnd = right - icon / 2 - arrowPad
 
 print("width=\(Int(width))")
 print("height=\(Int(height))")
+let textX = width / 2
+let textY = height - grid * 14
 print("icon_left=\(Int(left))")
 print("icon_right=\(Int(right))")
 print("icon_top=\(Int(iconTop))")
+print("text_x=\(Int(textX))")
+print("text_y=\(Int(textY))")
 
 let image = NSImage(size: NSSize(width: width, height: height), flipped: true) { _ in
     NSColor(srgbRed: 0.961, green: 0.961, blue: 0.969, alpha: 1).setFill()
@@ -57,35 +61,15 @@ let image = NSImage(size: NSSize(width: width, height: height), flipped: true) {
         color: ink,
         y: grid * 4)
     draw(
-        "Drag it to Applications, then open Terminal and paste:",
+        "Drag it to Applications. Open Paste in Terminal.txt and copy the line.",
         font: .systemFont(ofSize: 16, weight: .regular),
         color: secondary,
         y: grid * 10)
-
-    let command = "xattr -dr com.apple.quarantine /Applications/OpenRDP.app"
-    let commandLine = NSAttributedString(string: command, attributes: [
-        .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .medium),
-        .foregroundColor: ink,
-    ])
-    let commandSize = commandLine.size()
-    let chip = NSRect(
-        x: ((width - commandSize.width) / 2) - 16,
-        y: grid * 14,
-        width: commandSize.width + 32,
-        height: commandSize.height + 16)
-    NSColor.white.setFill()
-    NSBezierPath(roundedRect: chip, xRadius: 8, yRadius: 8).fill()
-    NSColor(srgbRed: 0.82, green: 0.82, blue: 0.84, alpha: 1).setStroke()
-    let border = NSBezierPath(roundedRect: chip, xRadius: 8, yRadius: 8)
-    border.lineWidth = 1
-    border.stroke()
-    commandLine.draw(at: NSPoint(x: chip.minX + 16, y: chip.minY + 8))
-
     draw(
         "Then open OpenRDP.",
         font: .systemFont(ofSize: 16, weight: .regular),
         color: secondary,
-        y: grid * 21)
+        y: grid * 14)
 
     let shaft = NSRect(x: arrowStart, y: arrowY - grid, width: arrowEnd - arrowStart - grid * 4, height: grid * 2)
     let head = NSBezierPath()
