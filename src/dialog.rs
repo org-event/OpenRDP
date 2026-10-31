@@ -28,14 +28,29 @@ pub fn russian() -> bool {
     std::env::var("LANG").is_ok_and(|lang| lang.starts_with("ru"))
 }
 
+/// The command shown in the install window so it can be copied into Terminal.
+pub const QUARANTINE_COMMAND: &str = "xattr -d com.apple.quarantine openrdp";
+
 /// AppleScript string literal.
 pub fn apple(text: &str) -> String {
-    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
+    let escaped = text
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n");
+    format!("\"{escaped}\"")
 }
 
 /// Shell single quotes, so a path can sit inside `do shell script`.
 pub fn shell_single(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\\''"))
+}
+
+pub fn unlock_reminder() -> &'static str {
+    if russian() {
+        "Снимите блокировку OpenRDP.\n\nОткройте Терминал и вставьте команду ниже.\nВведите пароль."
+    } else {
+        "Please unlock OpenRDP.\n\nOpen Terminal and paste the command below.\nEnter your password."
+    }
 }
 
 pub fn account_prompt() -> &'static str {
@@ -100,6 +115,12 @@ pub fn need_account() -> &'static str {
     } else {
         "A name and a password are required."
     }
+}
+
+/// First install window: the quarantine command is selected so it can be copied.
+/// `false` when the window is closed.
+pub fn remind_unlock() -> anyhow::Result<bool> {
+    Ok(ask(unlock_reminder(), false, QUARANTINE_COMMAND)?.is_some())
 }
 
 /// `display dialog` answer, or `None` when the dialog was cancelled.
@@ -193,6 +214,18 @@ mod tests {
         assert!(script.contains("with administrator privileges"));
         assert!(script.contains("with prompt \"просит пароль\""));
         assert!(script.contains("do shell script \"'/Apps/OpenRDP.app/Contents/MacOS/openrdp' install-system '/tmp/staged'\""));
+    }
+
+    #[test]
+    fn unlock_window_offers_the_quarantine_command() {
+        let script = ask_script(unlock_reminder(), false, QUARANTINE_COMMAND);
+        assert!(
+            script.contains("Please unlock OpenRDP.")
+                || script.contains("Снимите блокировку OpenRDP.")
+        );
+        assert!(script.contains("xattr -d com.apple.quarantine openrdp"));
+        assert!(script.contains("\\n"));
+        assert_eq!(apple("a\nb"), "\"a\\nb\"");
     }
 
     #[test]

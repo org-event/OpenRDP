@@ -218,6 +218,9 @@ fn gui_install() -> anyhow::Result<()> {
     if service::installed() {
         return dialog::note(dialog::already_installed());
     }
+    if !dialog::remind_unlock()? {
+        return Ok(());
+    }
     let Some(user) = dialog::ask(dialog::account_prompt(), false, &console_user())? else {
         return Ok(());
     };
