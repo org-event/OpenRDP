@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.3.10] - 2026-11-01
+
 ### Changed
 
 - The graphical install explains the administrator password, Screen Recording, and Accessibility one window at a time, and starts the server only after both permissions are on.
@@ -110,7 +112,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.9...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.10...HEAD
+[1.3.10]: https://github.com/org-event/OpenRDP/compare/v1.3.9...v1.3.10
 [1.3.9]: https://github.com/org-event/OpenRDP/compare/v1.3.8...v1.3.9
 [1.3.8]: https://github.com/org-event/OpenRDP/compare/v1.3.7...v1.3.8
 [1.3.7]: https://github.com/org-event/OpenRDP/compare/v1.3.6...v1.3.7
