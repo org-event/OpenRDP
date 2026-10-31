@@ -52,7 +52,7 @@ In Windows App on a Mac, set the Command key to be sent as Windows: the host the
 
 ## Start at login
 
-Open the release disk image and drag OpenRDP onto Applications. The first launch asks for the RDP name and password, then shows the system administrator prompt. The app is not notarized: if macOS refuses to open it, right-click OpenRDP and choose Open.
+Open the release disk image and drag OpenRDP onto Applications. The app is not notarized, so it stays in quarantine and will not open until you run `xattr -dr com.apple.quarantine /Applications/OpenRDP.app` in Terminal. The disk image shows that command. The first launch then asks for the RDP name and password, and for an administrator password.
 
 From a terminal, the same install is:
 
