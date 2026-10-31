@@ -4,6 +4,7 @@ mod broker;
 mod capture;
 mod clipboard;
 mod cursor;
+mod dialog;
 mod display;
 mod encoder;
 mod input;
@@ -33,6 +34,8 @@ USAGE:
   openrdp install --user <NAME> --pass <PASSWORD> [OPTIONS]
                       run at login as ~/Applications/OpenRDP.app (LaunchAgent)
                       and serve the login window (asks for an administrator password)
+  openrdp                  without a terminal: ask for the account, then for
+                           the administrator password, and install
   openrdp uninstall    remove the agent, the app and the login-window service
 
 OPTIONS:
@@ -194,7 +197,12 @@ fn main() -> anyhow::Result<()> {
             argv.remove(0);
             return install(argv);
         }
-        _ => {}
+        _ => {
+            if argv.is_empty() && !dialog::from_console() {
+                init_tracing();
+                return gui_install();
+            }
+        }
     }
 
     init_tracing();
@@ -203,6 +211,33 @@ fn main() -> anyhow::Result<()> {
         .build()
         .context("runtime")?;
     runtime.block_on(serve(argv))
+}
+
+/// First launch of the app, with nobody at a terminal to type the flags.
+fn gui_install() -> anyhow::Result<()> {
+    if service::installed() {
+        return dialog::note(dialog::already_installed());
+    }
+    let Some(user) = dialog::ask(dialog::account_prompt(), false, &console_user())? else {
+        return Ok(());
+    };
+    let Some(pass) = dialog::ask(dialog::password_prompt(), true, "")? else {
+        return Ok(());
+    };
+    if user.is_empty() || pass.is_empty() {
+        return dialog::note(dialog::need_account());
+    }
+    install(vec![
+        "--user".into(),
+        user.into(),
+        "--pass".into(),
+        pass.into(),
+    ])?;
+    dialog::note(dialog::grant_permissions())
+}
+
+fn console_user() -> String {
+    std::env::var("USER").unwrap_or_default()
 }
 
 fn init_tracing() {

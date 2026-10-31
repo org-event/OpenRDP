@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Opening OpenRDP with no terminal asks for the RDP name and password, then shows the system administrator prompt, so a clean install does not have to be typed in a console.
+
 ## [1.2.0] - 2026-10-31
 
 ### Added

@@ -274,23 +274,24 @@ pub(crate) fn request_install(
         .join("Library/Application Support/openrdp/broker.staged");
     config.save(&staged)?;
     println!("Installing the login-window service (administrator password).");
-    let status = Command::new("/usr/bin/sudo")
-        .arg("--")
-        .arg(binary)
-        .arg("install-system")
-        .arg(&staged)
-        .status()
-        .context("ask for an administrator password")?;
+    let status = elevate(
+        binary,
+        Some(&staged),
+        "install-system",
+        crate::dialog::admin_prompt(),
+    )?;
     let _ = std::fs::remove_file(&staged);
     if status.success() {
         println!(
             "The login window is served by {LABEL}. Log out and connect as usual; after you log in, connect again."
         );
-    } else {
+    } else if crate::dialog::from_console() {
         eprintln!(
             "The login-window service was not installed. The server still starts after you log in.\n\
              Run this install again in a terminal and enter the administrator password when asked."
         );
+    } else {
+        let _ = crate::dialog::note(crate::dialog::broker_skipped());
     }
     Ok(())
 }
@@ -301,12 +302,12 @@ pub(crate) fn request_uninstall(binary: &Path) -> anyhow::Result<()> {
         return Ok(());
     }
     println!("Removing the login-window service (administrator password).");
-    let status = Command::new("/usr/bin/sudo")
-        .arg("--")
-        .arg(binary)
-        .arg("uninstall-system")
-        .status()
-        .context("ask for an administrator password")?;
+    let status = elevate(
+        binary,
+        None,
+        "uninstall-system",
+        crate::dialog::remove_prompt(),
+    )?;
     if !status.success() {
         eprintln!(
             "The login-window service is still installed. Remove it with:\n  sudo {} uninstall-system",
@@ -314,6 +315,32 @@ pub(crate) fn request_uninstall(binary: &Path) -> anyhow::Result<()> {
         );
     }
     Ok(())
+}
+
+/// Asks for an administrator password: in the terminal with `sudo`, otherwise
+/// with the system dialog, which a double-clicked app can show.
+fn elevate(
+    binary: &Path,
+    staged: Option<&Path>,
+    command: &str,
+    prompt: &str,
+) -> anyhow::Result<std::process::ExitStatus> {
+    if crate::dialog::from_console() {
+        let mut sudo = Command::new("/usr/bin/sudo");
+        sudo.arg("--").arg(binary).arg(command);
+        if let Some(staged) = staged {
+            sudo.arg(staged);
+        }
+        return sudo.status().context("ask for an administrator password");
+    }
+    let mut shell = crate::dialog::shell_single(&binary.display().to_string());
+    shell.push(' ');
+    shell.push_str(command);
+    if let Some(staged) = staged {
+        shell.push(' ');
+        shell.push_str(&crate::dialog::shell_single(&staged.display().to_string()));
+    }
+    crate::dialog::authorize(&shell, prompt).context("ask for an administrator password")
 }
 
 /// Copies the staged config into place and bootstraps the daemon. Root only.
