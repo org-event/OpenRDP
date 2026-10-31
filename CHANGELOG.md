@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-31
+
 ### Added
 
 - Opening OpenRDP with no terminal asks for the RDP name and password, then shows the system administrator prompt, so a clean install does not have to be typed in a console.
@@ -50,7 +52,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/org-event/OpenRDP/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/org-event/OpenRDP/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/org-event/OpenRDP/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/org-event/OpenRDP/releases/tag/v1.0.0
