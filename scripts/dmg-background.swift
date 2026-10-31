@@ -7,8 +7,9 @@
 // positions from stdout and places the Finder icons on the same cells.
 //
 //   768 × 576 canvas (96 × 72 cells)
-//   icon 128, gap 160, the pair centered
-//   icon centers and the arrow sit on the horizontal midline
+//   Finder's icon position is the center of the icon.
+//   OpenRDP stays on the left. Applications sits further right, clear of the
+//   instruction text. The arrow runs between those centers.
 
 import AppKit
 
@@ -21,15 +22,13 @@ let grid: CGFloat = 8
 let width = grid * 96
 let height = grid * 72
 let icon = grid * 16
-let gap = grid * 20
-let group = icon + gap + icon
-let left = (width - group) / 2
-let right = left + icon + gap
+let left: CGFloat = 176
+let right: CGFloat = 560
 let iconTop = (height - icon) / 2
-let arrowY = iconTop + icon / 2
+let arrowY = iconTop + grid
 let arrowPad = grid * 3
-let arrowStart = left + icon + arrowPad
-let arrowEnd = left + icon + gap - arrowPad
+let arrowStart = left + icon / 2 + arrowPad
+let arrowEnd = right - icon / 2 - arrowPad
 
 print("width=\(Int(width))")
 print("height=\(Int(height))")
