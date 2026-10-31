@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-10-31
+
 ### Fixed
 
 - The disk-image window shows only OpenRDP and Applications, on one line. The background picture is no longer a folder in that window.
@@ -74,7 +76,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.3...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.4...HEAD
+[1.3.4]: https://github.com/org-event/OpenRDP/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/org-event/OpenRDP/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/org-event/OpenRDP/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/org-event/OpenRDP/compare/v1.3.0...v1.3.1
