@@ -52,11 +52,15 @@ In Windows App on a Mac, set the Command key to be sent as Windows: the host the
 
 ## Start at login
 
+Open the release disk image and drag OpenRDP onto Applications. The first launch asks for the RDP name and password, then shows the system administrator prompt. The app is not notarized: if macOS refuses to open it, right-click OpenRDP and choose Open.
+
+From a terminal, the same install is:
+
 ```bash
 ./target/release/openrdp install --user me --pass secret
 ```
 
-Opening the app with no terminal asks for that name and password, then shows the system administrator prompt. From a terminal, `install` asks for the administrator password with `sudo`.
+That command asks for the administrator password with `sudo`.
 
 This copies the server into `~/Applications/OpenRDP.app` and installs the LaunchAgent `com.openrdp.server`. The server starts when you log in and restarts if it crashes. The password is stored in `~/Library/LaunchAgents/com.openrdp.server.plist` with mode 600, and the log goes to `~/Library/Logs/openrdp.log`. In this mode the permissions are granted to "OpenRDP" rather than to a terminal. They can only be granted at the Mac; restart the server afterwards:
 

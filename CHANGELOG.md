@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- The release includes a disk image. Opening it shows OpenRDP and Applications; drag the app across. The first launch then asks for the RDP account and the administrator password.
+
 ## [1.3.1] - 2026-10-31
 
 ### Added
