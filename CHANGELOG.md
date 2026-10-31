@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.3.9] - 2026-10-31
+
+### Fixed
+
+- `command.txt` on the disk image sits directly under the arrow.
+
 ## [1.3.8] - 2026-10-31
 
 ### Fixed
@@ -100,7 +106,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.8...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.9...HEAD
+[1.3.9]: https://github.com/org-event/OpenRDP/compare/v1.3.8...v1.3.9
 [1.3.8]: https://github.com/org-event/OpenRDP/compare/v1.3.7...v1.3.8
 [1.3.7]: https://github.com/org-event/OpenRDP/compare/v1.3.6...v1.3.7
 [1.3.6]: https://github.com/org-event/OpenRDP/compare/v1.3.5...v1.3.6
