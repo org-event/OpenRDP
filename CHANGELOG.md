@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-10-31
+
 ### Added
 
 - The release includes a disk image. Opening it shows OpenRDP and Applications; drag the app across. The first launch then asks for the RDP account and the administrator password.
@@ -62,7 +64,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/org-event/OpenRDP/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/org-event/OpenRDP/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/org-event/OpenRDP/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/org-event/OpenRDP/compare/v1.1.0...v1.2.0
