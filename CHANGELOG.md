@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-31
+
 ### Added
 
 - The graphical install starts with a reminder to unlock the downloaded file: open Terminal, paste `xattr -d com.apple.quarantine openrdp`, and enter the password.
@@ -56,7 +58,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/org-event/OpenRDP/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/org-event/OpenRDP/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/org-event/OpenRDP/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/org-event/OpenRDP/compare/v1.0.0...v1.1.0
