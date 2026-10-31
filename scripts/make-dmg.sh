@@ -62,11 +62,19 @@ attached=1
 cp -R "$app" "$mount/OpenRDP.app"
 ln -s /Applications "$mount/Applications"
 # The picture lives inside the app, so the window has no extra folder to draw.
-swift "$root/scripts/dmg-background.swift" "$mount/OpenRDP.app/Contents/Resources/background.png"
+# Its stdout is the same 8-point grid the picture was drawn on.
+swift "$root/scripts/dmg-background.swift" \
+  "$mount/OpenRDP.app/Contents/Resources/background.png" > "$stage/layout"
+# shellcheck disable=SC1091
+source "$stage/layout"
+# The title bar is outside the icon view. The picture matches the view.
+titlebar=28
+win_right=$((200 + width))
+win_bottom=$((80 + height + titlebar))
 
 # Finder draws the window. A runner without a desktop still ships a usable image.
-# Icon positions are the top-left of a 128-point icon. Both share one y so they
-# sit on the same line, with room below for the names.
+# Icon positions are the top-left of the 128-point icon, so both sit on icon_top
+# and the arrow (drawn at the icon center) crosses that row.
 if osascript <<EOF
 tell application "Finder"
   tell disk "$vol"
@@ -74,7 +82,7 @@ tell application "Finder"
     set current view of container window to icon view
     set toolbar visible of container window to false
     set statusbar visible of container window to false
-    set the bounds of container window to {200, 80, 960, 660}
+    set the bounds of container window to {200, 80, ${win_right}, ${win_bottom}}
     set viewOptions to the icon view options of container window
     set arrangement of viewOptions to not arranged
     set icon size of viewOptions to 128
@@ -83,18 +91,18 @@ tell application "Finder"
     try
       set visible of item ".fseventsd" of container window to false
     end try
-    set position of item "OpenRDP.app" of container window to {160, 250}
-    set position of item "Applications" of container window to {500, 250}
+    set position of item "OpenRDP.app" of container window to {${icon_left}, ${icon_top}}
+    set position of item "Applications" of container window to {${icon_right}, ${icon_top}}
     close
     open
     update without registering applications
     delay 2
-    set the bounds of container window to {200, 80, 960, 660}
+    set the bounds of container window to {200, 80, ${win_right}, ${win_bottom}}
     try
       set visible of item ".fseventsd" of container window to false
     end try
-    set position of item "OpenRDP.app" of container window to {160, 250}
-    set position of item "Applications" of container window to {500, 250}
+    set position of item "OpenRDP.app" of container window to {${icon_left}, ${icon_top}}
+    set position of item "Applications" of container window to {${icon_right}, ${icon_top}}
     close
   end tell
 end tell

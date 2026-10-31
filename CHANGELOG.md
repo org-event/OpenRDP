@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- The disk image uses one 8-point grid. OpenRDP and Applications share a row through the middle of the window, and the arrow crosses the center of both icons.
+
 ## [1.3.4] - 2026-10-31
 
 ### Fixed
