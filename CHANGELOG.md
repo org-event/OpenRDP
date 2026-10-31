@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- The disk-image window shows the quarantine instructions again. `command.txt` under the arrow holds the same line, so it can be opened and copied.
+
 ## [1.3.7] - 2026-10-31
 
 ### Fixed
