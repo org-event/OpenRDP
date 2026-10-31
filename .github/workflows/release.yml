@@ -43,8 +43,8 @@ jobs:
         run: |
           cat > notes.md <<'EOF'
           Apple Silicon build. Open the disk image and drag OpenRDP to Applications.
+          The window shows the command that takes the app out of quarantine; until then it will not open.
           The first launch asks for the RDP name and password, then for an administrator password, so a restart still reaches the login window.
-          The app is not notarized. If macOS refuses to open it, right-click OpenRDP and choose Open.
           A running server asks before installing a newer release.
 
           See CHANGELOG.md for the changes.

@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- The disk-image window shows how to leave quarantine: drag OpenRDP to Applications, then run `xattr -dr com.apple.quarantine /Applications/OpenRDP.app`. The app does not open until that attribute is gone.
+
 ## [1.3.2] - 2026-10-31
 
 ### Added

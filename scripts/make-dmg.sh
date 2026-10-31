@@ -62,38 +62,7 @@ attached=1
 cp -R "$app" "$mount/OpenRDP.app"
 ln -s /Applications "$mount/Applications"
 mkdir -p "$mount/.background"
-python3 - "$mount/.background/background.png" <<'PY'
-import struct
-import sys
-import zlib
-
-path, width, height = sys.argv[1], 640, 380
-
-def pixel(x, y):
-    # Grey arrow between the two icons.
-    shaft = 250 <= x <= 390 and 178 <= y <= 198
-    head = 390 <= x <= 430 and abs(y - 188) <= (430 - x) * 0.7
-    if shaft or head:
-        return bytes((142, 142, 147))
-    return bytes((245, 245, 247))
-
-rows = bytearray()
-for y in range(height):
-    rows.append(0)
-    for x in range(width):
-        rows.extend(pixel(x, y))
-
-def chunk(tag, data):
-    return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
-
-raw = zlib.compress(bytes(rows), 9)
-png = b"\x89PNG\r\n\x1a\n"
-png += chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-png += chunk(b"IDAT", raw)
-png += chunk(b"IEND", b"")
-with open(path, "wb") as out:
-    out.write(png)
-PY
+swift "$root/scripts/dmg-background.swift" "$mount/.background/background.png"
 chflags hidden "$mount/.background"
 
 # Finder draws the window. A runner without a desktop still ships a usable image.
@@ -104,13 +73,13 @@ tell application "Finder"
     set current view of container window to icon view
     set toolbar visible of container window to false
     set statusbar visible of container window to false
-    set the bounds of container window to {240, 120, 880, 500}
+    set the bounds of container window to {200, 80, 960, 640}
     set viewOptions to the icon view options of container window
     set arrangement of viewOptions to not arranged
     set icon size of viewOptions to 128
     set background picture of viewOptions to file ".background:background.png"
-    set position of item "OpenRDP.app" of container window to {140, 180}
-    set position of item "Applications" of container window to {460, 180}
+    set position of item "OpenRDP.app" of container window to {200, 360}
+    set position of item "Applications" of container window to {560, 360}
     close
     open
     update without registering applications
