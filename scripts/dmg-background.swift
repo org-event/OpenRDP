@@ -3,9 +3,12 @@
 //
 //   swift scripts/dmg-background.swift <output.png>
 //
-// The picture is 760×580 points. scripts/make-dmg.sh uses the same window.
-// Finder's icon position is the top-left of a 128-point icon, so the arrow
-// sits 64 points below that, through the middle of the two icons.
+// One 8-point grid for the whole window. scripts/make-dmg.sh reads the
+// positions from stdout and places the Finder icons on the same cells.
+//
+//   768 × 576 canvas (96 × 72 cells)
+//   icon 128, gap 160, the pair centered
+//   icon centers and the arrow sit on the horizontal midline
 
 import AppKit
 
@@ -14,11 +17,25 @@ guard CommandLine.arguments.count == 2 else {
     exit(2)
 }
 
-let width: CGFloat = 760
-let height: CGFloat = 580
-let arrowY: CGFloat = 314
-let arrowStart: CGFloat = 310
-let arrowEnd: CGFloat = 470
+let grid: CGFloat = 8
+let width = grid * 96
+let height = grid * 72
+let icon = grid * 16
+let gap = grid * 20
+let group = icon + gap + icon
+let left = (width - group) / 2
+let right = left + icon + gap
+let iconTop = (height - icon) / 2
+let arrowY = iconTop + icon / 2
+let arrowPad = grid * 3
+let arrowStart = left + icon + arrowPad
+let arrowEnd = left + icon + gap - arrowPad
+
+print("width=\(Int(width))")
+print("height=\(Int(height))")
+print("icon_left=\(Int(left))")
+print("icon_right=\(Int(right))")
+print("icon_top=\(Int(iconTop))")
 
 let image = NSImage(size: NSSize(width: width, height: height), flipped: true) { _ in
     NSColor(srgbRed: 0.961, green: 0.961, blue: 0.969, alpha: 1).setFill()
@@ -39,12 +56,12 @@ let image = NSImage(size: NSSize(width: width, height: height), flipped: true) {
         "Please unlock OpenRDP",
         font: .systemFont(ofSize: 26, weight: .semibold),
         color: ink,
-        y: 36)
+        y: grid * 4)
     draw(
         "Drag it to Applications, then open Terminal and paste:",
         font: .systemFont(ofSize: 16, weight: .regular),
         color: secondary,
-        y: 78)
+        y: grid * 10)
 
     let command = "xattr -dr com.apple.quarantine /Applications/OpenRDP.app"
     let commandLine = NSAttributedString(string: command, attributes: [
@@ -54,7 +71,7 @@ let image = NSImage(size: NSSize(width: width, height: height), flipped: true) {
     let commandSize = commandLine.size()
     let chip = NSRect(
         x: ((width - commandSize.width) / 2) - 16,
-        y: 118,
+        y: grid * 14,
         width: commandSize.width + 32,
         height: commandSize.height + 16)
     NSColor.white.setFill()
@@ -69,13 +86,13 @@ let image = NSImage(size: NSSize(width: width, height: height), flipped: true) {
         "Then open OpenRDP.",
         font: .systemFont(ofSize: 16, weight: .regular),
         color: secondary,
-        y: 176)
+        y: grid * 21)
 
-    let shaft = NSRect(x: arrowStart, y: arrowY - 8, width: arrowEnd - arrowStart - 36, height: 16)
+    let shaft = NSRect(x: arrowStart, y: arrowY - grid, width: arrowEnd - arrowStart - grid * 4, height: grid * 2)
     let head = NSBezierPath()
-    head.move(to: NSPoint(x: arrowEnd - 42, y: arrowY - 22))
+    head.move(to: NSPoint(x: arrowEnd - grid * 5, y: arrowY - grid * 3))
     head.line(to: NSPoint(x: arrowEnd, y: arrowY))
-    head.line(to: NSPoint(x: arrowEnd - 42, y: arrowY + 22))
+    head.line(to: NSPoint(x: arrowEnd - grid * 5, y: arrowY + grid * 3))
     head.close()
     NSColor(srgbRed: 0.557, green: 0.557, blue: 0.576, alpha: 1).setFill()
     NSBezierPath(roundedRect: shaft, xRadius: 2, yRadius: 2).fill()
