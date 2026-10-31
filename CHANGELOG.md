@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-10-31
+
 ### Added
 
 - The disk-image window shows how to leave quarantine: drag OpenRDP to Applications, then run `xattr -dr com.apple.quarantine /Applications/OpenRDP.app`. The app does not open until that attribute is gone.
@@ -68,7 +70,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.2...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.3...HEAD
+[1.3.3]: https://github.com/org-event/OpenRDP/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/org-event/OpenRDP/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/org-event/OpenRDP/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/org-event/OpenRDP/compare/v1.2.0...v1.3.0
