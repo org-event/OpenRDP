@@ -197,7 +197,7 @@ fn reinstall_detached(binary: &Path) -> anyhow::Result<()> {
 /// `Some(true)` install, `Some(false)` later, `None` when there is no dialog.
 fn ask(tag: &str, current: &str) -> anyhow::Result<Option<bool>> {
     let version = tag.trim_start_matches('v');
-    let (message, later, install) = if russian() {
+    let (message, later, install) = if crate::dialog::russian() {
         (
             format!(
                 "Доступен OpenRDP {version} (сейчас {current}). Подключение на минуту прервётся. Установить?"
@@ -216,10 +216,10 @@ fn ask(tag: &str, current: &str) -> anyhow::Result<Option<bool>> {
     };
     let script = format!(
         "display dialog {} buttons {{{}, {}}} default button {} with title \"OpenRDP\"",
-        apple(&message),
-        apple(later),
-        apple(install),
-        apple(later),
+        crate::dialog::apple(&message),
+        crate::dialog::apple(later),
+        crate::dialog::apple(install),
+        crate::dialog::apple(later),
     );
     let output = Command::new("osascript").arg("-e").arg(script).output()?;
     if !output.status.success() {
@@ -227,24 +227,6 @@ fn ask(tag: &str, current: &str) -> anyhow::Result<Option<bool>> {
     }
     let answer = String::from_utf8_lossy(&output.stdout);
     Ok(Some(answer.contains(install)))
-}
-
-fn russian() -> bool {
-    let output = Command::new("defaults")
-        .args(["read", "-g", "AppleLocale"])
-        .output();
-    if let Ok(output) = output
-        && String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .starts_with("ru")
-    {
-        return true;
-    }
-    std::env::var("LANG").is_ok_and(|lang| lang.starts_with("ru"))
-}
-
-fn apple(text: &str) -> String {
-    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 fn curl(url: &str) -> anyhow::Result<String> {

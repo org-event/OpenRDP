@@ -53,6 +53,11 @@ fn paths() -> anyhow::Result<Paths> {
     })
 }
 
+/// Whether `install` has already written the agent plist.
+pub(crate) fn installed() -> bool {
+    paths().is_ok_and(|paths| paths.plist.is_file())
+}
+
 /// Installs and starts the agent with `server_args` (already validated); the
 /// password comes separately so it stays out of the process list.
 pub fn install(server_args: &[String], password: &str) -> anyhow::Result<()> {

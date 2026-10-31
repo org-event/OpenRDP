@@ -40,6 +40,8 @@ cargo build --release
 ./target/release/openrdp install --user me --pass secret
 ```
 
+Если открыть программу без терминала, она сама спрашивает это имя и пароль, а затем показывает системный запрос пароля администратора. Из терминала `install` спрашивает пароль администратора через `sudo`.
+
 Копирует сервер в `~/Applications/OpenRDP.app` и ставит LaunchAgent `com.openrdp.server`. Сервер стартует при входе в систему и перезапускается, если упал. Пароль лежит в `~/Library/LaunchAgents/com.openrdp.server.plist` с правами 600, лог пишется в `~/Library/Logs/openrdp.log`. Права macOS в этом режиме выдаются «OpenRDP», а не терминалу. Выдать их можно только за самим маком, после этого сервер нужно перезапустить:
 
 ```bash
