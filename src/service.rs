@@ -61,33 +61,14 @@ pub(crate) fn installed() -> bool {
 /// Installs and starts the agent with `server_args` (already validated); the
 /// password comes separately so it stays out of the process list.
 pub fn install(server_args: &[String], password: &str) -> anyhow::Result<()> {
-    let paths = paths()?;
-    let removed = bootout(OLD_LABEL);
-    let removed = removed || remove_legacy(&home_dir()?)?;
-    stop();
-
-    let exe = std::env::current_exe().context("locate this binary")?;
-    stage_binary(&paths.binary, &exe)?;
-    std::fs::write(
-        paths.app.join("Contents/Info.plist"),
-        info_plist(env!("CARGO_PKG_VERSION")),
-    )?;
-    let resources = paths.app.join("Contents/Resources");
-    std::fs::create_dir_all(&resources)?;
-    std::fs::write(resources.join("AppIcon.icns"), ICON)?;
-    sign(&paths)?;
-
-    let mut program = vec![paths.binary.display().to_string()];
-    program.extend(server_args.iter().cloned());
-    write_private(&paths.plist, agent_plist(&program, password, &paths.log))?;
-    run(Command::new("launchctl")
-        .args(["bootstrap", &domain()])
-        .arg(&paths.plist))
-    .context("start the agent")?;
-
-    println!("Installed {} and started it at login.", paths.app.display());
-    println!("Log: {}", paths.log.display());
-    if removed {
+    let prepared = prepare(server_args, password)?;
+    start_agent()?;
+    println!(
+        "Installed {} and started it at login.",
+        prepared.paths.app.display()
+    );
+    println!("Log: {}", prepared.paths.log.display());
+    if prepared.replaced_legacy {
         println!(
             "Removed the previous install. macOS treats \"{BUNDLE_NAME}\" as a new app, so \
              Screen Recording and Accessibility have to be granted again at the Mac (System \
@@ -105,7 +86,74 @@ pub fn install(server_args: &[String], password: &str) -> anyhow::Result<()> {
             domain()
         );
     }
-    crate::broker::request_install(&paths.binary, server_args, password)
+    crate::broker::request_install(&prepared.paths.binary, server_args, password)
+}
+
+/// Writes the app and the agent, and asks for the login-window service, but
+/// does not start the server. The graphical install starts it only after both
+/// permissions are on, so the first process already has them.
+pub fn install_waiting(server_args: &[String], password: &str) -> anyhow::Result<()> {
+    let prepared = prepare(server_args, password)?;
+    crate::broker::request_install(&prepared.paths.binary, server_args, password)
+}
+
+/// The signed app the agent runs. Permission prompts have to come from this
+/// binary, not from the copy that was dragged out of the disk image.
+pub(crate) fn installed_binary() -> anyhow::Result<PathBuf> {
+    Ok(paths()?.binary)
+}
+
+pub(crate) fn agent_running() -> bool {
+    Command::new("launchctl")
+        .args(["print", &format!("{}/{LABEL}", domain())])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+pub(crate) fn start_agent() -> anyhow::Result<()> {
+    let paths = paths()?;
+    run(Command::new("launchctl")
+        .args(["bootstrap", &domain()])
+        .arg(&paths.plist))
+    .context("start the agent")
+}
+
+pub(crate) fn restart_agent() -> anyhow::Result<()> {
+    run(Command::new("launchctl").args(["kickstart", "-k", &format!("{}/{LABEL}", domain())]))
+        .context("restart the agent")
+}
+
+struct Prepared {
+    paths: Paths,
+    replaced_legacy: bool,
+}
+
+fn prepare(server_args: &[String], password: &str) -> anyhow::Result<Prepared> {
+    let paths = paths()?;
+    let removed = bootout(OLD_LABEL);
+    let replaced_legacy = removed || remove_legacy(&home_dir()?)?;
+    stop();
+
+    let exe = std::env::current_exe().context("locate this binary")?;
+    stage_binary(&paths.binary, &exe)?;
+    std::fs::write(
+        paths.app.join("Contents/Info.plist"),
+        info_plist(env!("CARGO_PKG_VERSION")),
+    )?;
+    let resources = paths.app.join("Contents/Resources");
+    std::fs::create_dir_all(&resources)?;
+    std::fs::write(resources.join("AppIcon.icns"), ICON)?;
+    sign(&paths)?;
+
+    let mut program = vec![paths.binary.display().to_string()];
+    program.extend(server_args.iter().cloned());
+    write_private(&paths.plist, agent_plist(&program, password, &paths.log))?;
+    Ok(Prepared {
+        paths,
+        replaced_legacy,
+    })
 }
 
 /// Replaces the installed binary with `new_binary`, signs it again and restarts

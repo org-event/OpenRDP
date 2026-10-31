@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- The graphical install explains the administrator password, Screen Recording, and Accessibility one window at a time, and starts the server only after both permissions are on.
+
 ## [1.3.9] - 2026-10-31
 
 ### Fixed

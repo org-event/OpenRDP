@@ -52,7 +52,7 @@ In Windows App on a Mac, set the Command key to be sent as Windows: the host the
 
 ## Start at login
 
-Open the release disk image and drag OpenRDP onto Applications. The app is not notarized, so it stays in quarantine and will not open until you run `xattr -dr com.apple.quarantine /Applications/OpenRDP.app` in Terminal. The disk image shows that command. The first launch then asks for the RDP name and password, and for an administrator password.
+Open the release disk image and drag OpenRDP onto Applications. The app is not notarized, so it stays in quarantine and will not open until you run `xattr -dr com.apple.quarantine /Applications/OpenRDP.app` in Terminal. The disk image shows that command. The first launch asks for the RDP name and password, warns before the administrator password, then walks through Screen Recording and Accessibility. The server starts only after both are on.
 
 From a terminal, the same install is:
 
@@ -62,7 +62,7 @@ From a terminal, the same install is:
 
 That command asks for the administrator password with `sudo`.
 
-This copies the server into `~/Applications/OpenRDP.app` and installs the LaunchAgent `com.openrdp.server`. The server starts when you log in and restarts if it crashes. The password is stored in `~/Library/LaunchAgents/com.openrdp.server.plist` with mode 600, and the log goes to `~/Library/Logs/openrdp.log`. In this mode the permissions are granted to "OpenRDP" rather than to a terminal. They can only be granted at the Mac; restart the server afterwards:
+This copies the server into `~/Applications/OpenRDP.app` and installs the LaunchAgent `com.openrdp.server`. The server starts when you log in and restarts if it crashes. The password is stored in `~/Library/LaunchAgents/com.openrdp.server.plist` with mode 600, and the log goes to `~/Library/Logs/openrdp.log`. In this mode the permissions are granted to "OpenRDP" rather than to a terminal. The graphical install opens the right windows itself. From a terminal they still have to be granted at the Mac, and the server restarted afterwards:
 
 ```bash
 launchctl kickstart -k gui/$(id -u)/com.openrdp.server

@@ -10,6 +10,7 @@ mod encoder;
 mod input;
 mod power;
 mod service;
+mod setup;
 mod signing;
 mod tls;
 mod update;
@@ -35,7 +36,8 @@ USAGE:
                       run at login as ~/Applications/OpenRDP.app (LaunchAgent)
                       and serve the login window (asks for an administrator password)
   openrdp                  without a terminal: ask for the account, then for
-                           the administrator password, and install
+                           the administrator password, then Screen Recording and
+                           Accessibility, and start only after both are on
   openrdp uninstall    remove the agent, the app and the login-window service
 
 OPTIONS:
@@ -197,6 +199,10 @@ fn main() -> anyhow::Result<()> {
             argv.remove(0);
             return install(argv);
         }
+        Some("--setup") => {
+            init_tracing();
+            return setup::run();
+        }
         _ => {
             if argv.is_empty() && !dialog::from_console() {
                 init_tracing();
@@ -215,25 +221,37 @@ fn main() -> anyhow::Result<()> {
 
 /// First launch of the app, with nobody at a terminal to type the flags.
 fn gui_install() -> anyhow::Result<()> {
-    if service::installed() {
-        return dialog::note(dialog::already_installed());
+    if !service::installed() {
+        let Some(user) = dialog::ask(dialog::account_prompt(), false, &console_user())? else {
+            return Ok(());
+        };
+        let Some(pass) = dialog::ask(dialog::password_prompt(), true, "")? else {
+            return Ok(());
+        };
+        if user.is_empty() || pass.is_empty() {
+            return dialog::note(dialog::need_account());
+        }
+        dialog::note(dialog::admin_coming())?;
+        service::install_waiting(&["--user".into(), user], &pass)?;
     }
-    let Some(user) = dialog::ask(dialog::account_prompt(), false, &console_user())? else {
-        return Ok(());
-    };
-    let Some(pass) = dialog::ask(dialog::password_prompt(), true, "")? else {
-        return Ok(());
-    };
-    if user.is_empty() || pass.is_empty() {
-        return dialog::note(dialog::need_account());
+    handoff_setup()
+}
+
+/// Permission prompts belong to the signed app. A copy dragged from the disk
+/// image only collects the account, then hands the rest over.
+fn handoff_setup() -> anyhow::Result<()> {
+    if service::running_from_app() {
+        return setup::run();
     }
-    install(vec![
-        "--user".into(),
-        user.into(),
-        "--pass".into(),
-        pass.into(),
-    ])?;
-    dialog::note(dialog::grant_permissions())
+    let status = std::process::Command::new(service::installed_binary()?)
+        .arg("--setup")
+        .status()
+        .context("continue the install")?;
+    if status.success() {
+        Ok(())
+    } else {
+        bail!("the install did not finish")
+    }
 }
 
 fn console_user() -> String {
@@ -339,33 +357,18 @@ fn is_addr_in_use(err: &ServerError) -> bool {
     )
 }
 
-#[link(name = "ApplicationServices", kind = "framework")]
-unsafe extern "C" {
-    fn AXIsProcessTrustedWithOptions(options: Option<&objc2_core_foundation::CFDictionary>)
-    -> bool;
-}
-
 /// Logs both grants on every start (`openrdp-doctor` reads that line) and asks
-/// for the missing ones.
+/// for the missing ones. The graphical install has already walked through them;
+/// a terminal install still hits these prompts.
 fn check_permissions() {
-    let screen_recording = objc2_core_graphics::CGPreflightScreenCaptureAccess();
+    let screen_recording = setup::capture_granted();
     if !screen_recording {
         warn!("Screen Recording permission missing; requesting it (restart after granting)");
-        objc2_core_graphics::CGRequestScreenCaptureAccess();
+        setup::request_capture();
     }
     // Asking with the prompt option also adds the app that launched us to the
     // Accessibility list, so the user only has to switch it on.
-    let options = objc2_core_foundation::CFDictionary::<
-        objc2_core_foundation::CFString,
-        objc2_core_foundation::CFBoolean,
-    >::from_slices(
-        &[&*objc2_core_foundation::CFString::from_static_str(
-            "AXTrustedCheckOptionPrompt",
-        )],
-        &[objc2_core_foundation::CFBoolean::new(true)],
-    );
-    // SAFETY: the dictionary holds the documented option key with a CFBoolean.
-    let accessibility = unsafe { AXIsProcessTrustedWithOptions(Some(options.as_opaque())) };
+    let accessibility = setup::accessibility_granted(true);
     if !accessibility {
         warn!(
             "Accessibility permission missing; requested it (restart after granting): remote keyboard and mouse will be ignored"
