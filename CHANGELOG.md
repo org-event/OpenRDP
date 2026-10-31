@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- The disk-image window shows only OpenRDP and Applications, on one line. The background picture is no longer a folder in that window.
+
 ## [1.3.3] - 2026-10-31
 
 ### Added
