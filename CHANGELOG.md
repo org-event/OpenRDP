@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- The disk-image arrow crosses the middle of the icons, and Applications sits to the right of the instruction text.
+
 ## [1.3.5] - 2026-10-31
 
 ### Fixed
