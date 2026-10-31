@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- The graphical install starts with a reminder to unlock the downloaded file: open Terminal, paste `xattr -d com.apple.quarantine openrdp`, and enter the password.
+
 ## [1.3.0] - 2026-10-31
 
 ### Added
