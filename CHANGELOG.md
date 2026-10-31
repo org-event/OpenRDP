@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.3.8] - 2026-10-31
+
 ### Fixed
 
 - The disk-image window shows the quarantine instructions again. `command.txt` under the arrow holds the same line, so it can be opened and copied.
@@ -98,7 +100,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.7...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.8...HEAD
+[1.3.8]: https://github.com/org-event/OpenRDP/compare/v1.3.7...v1.3.8
 [1.3.7]: https://github.com/org-event/OpenRDP/compare/v1.3.6...v1.3.7
 [1.3.6]: https://github.com/org-event/OpenRDP/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/org-event/OpenRDP/compare/v1.3.4...v1.3.5
