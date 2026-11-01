@@ -13,7 +13,7 @@ An open RDP server for macOS, built on [IronRDP](https://github.com/Devolutions/
 
 - **Capture**: ScreenCaptureKit, straight to NV12 full-range BT.709 (the AVC color space of MS-RDPEGFX), with no conversion.
 - **Encoding**: VideoToolbox H.264, realtime, low latency, no B-frames.
-- **Graphics**: the EGFX channel, AVC420. The surface is aligned to 16 and the extra pixels are cut off by a region.
+- **Graphics**: the EGFX channel. AVC420 by default. `--avc444` sends AVC444 to clients that take it, as Windows servers do: full-resolution colour, so text and coloured edges stay sharp. Windows App for Mac drops the connection on it, so it stays off by default. The surface is aligned to 16 and the extra pixels are cut off by a region.
 - **Screen size**: a virtual display (`CGVirtualDisplay`) matches the client's window, in HiDPI, capped at 3072×1920 by area (`--max-size`). It survives a disconnect for 5 minutes, so windows stay put when you reconnect.
 - **Input**: `CGEventPost`. RDP scancodes are mapped to Mac keycodes: Win → Command, Alt → Option. Double clicks are counted.
 - **Cursor**: sent as RDP pointer updates and drawn by the client, so it moves without video latency.
@@ -74,7 +74,7 @@ After updating the build, run `install` again. It signs the app with a local cer
 
 While the server is running it checks GitHub for a newer release. A dialog asks before installing; the connection drops for a moment while the new build replaces the app and the agent restarts. `--update auto` installs without asking, `--update off` does not check. "Later" asks again the next day.
 
-`install` also installs a LaunchDaemon, `com.openrdp.broker`, and asks for an administrator password once. While the Mac shows the login window, the daemon starts this same server inside that window's session, running as the user who installed it, so the Screen Recording and Accessibility grants already given to OpenRDP apply. The stream is the physical display at its current size. Keys typed in the RDP client go to the login window, including the Mac password. After a successful login the daemon stops that process and the LaunchAgent takes over; the client connects again. Logging out returns the server to the login window.
+`install` also installs a LaunchDaemon, `com.openrdp.broker`, and a login-window LaunchAgent, `com.openrdp.loginwindow`, and asks for an administrator password once. While the Mac shows the login window, launchd starts this same server inside that window's session. It runs as root there, as every login-window agent does, and the Screen Recording and Accessibility grants already given to OpenRDP apply. The stream is the physical display at its current size. Keys typed in the RDP client go to the login window, including the Mac password. After a successful login that process exits and the per-user LaunchAgent takes over; the client connects again. Logging out returns the server to the login window.
 
 The FileVault screen before macOS has booted is still out of reach. RDP starts once the disk is unlocked and the login window is up. Until then, Screen Sharing can log you in: `ssh -N -L 5901:127.0.0.1:5900 you@mac` and then `vnc://127.0.0.1:5901`.
 

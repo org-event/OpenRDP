@@ -31,7 +31,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::capture::{Capture, Frame, FrameSlot, TestPattern};
 use crate::cursor::CursorWatch;
-use crate::encoder::Encoder;
+use crate::encoder::{EncodedFrame, Encoder};
 use crate::virtual_display::{Mode, VirtualDisplay};
 
 /// QP reported to the client for each region; informational for AVC420.
@@ -47,6 +47,8 @@ const MAX_FRAMES_IN_FLIGHT: u32 = 3;
 pub struct DisplayConfig {
     pub fps: i32,
     pub bitrate: u32,
+    /// Send AVC444v2 to clients that take it.
+    pub avc444: bool,
     /// Stream physical displays in pixels instead of points.
     pub hidpi: bool,
     /// Stream a virtual display sized to the client instead of the main display.
@@ -288,8 +290,21 @@ impl MacDisplay {
 
     /// Brings the virtual display to the wanted mode, creating it if needed.
     /// On failure streaming falls back to the main display.
+    ///
+    /// Without a virtual display the main display is looked up again: the one seen at
+    /// startup may be gone, as when the login window opens while the logged-out user's
+    /// virtual display is still the main one.
     fn sync_virtual_display(&mut self) {
         let Some(mode) = self.wanted.filter(|_| self.virtual_enabled()) else {
+            if self
+                .shared
+                .virtual_display
+                .lock()
+                .expect("poisoned")
+                .is_none()
+            {
+                self.restore_main_screen();
+            }
             return;
         };
         let mut slot = self.shared.virtual_display.lock().expect("poisoned");
@@ -388,6 +403,33 @@ impl RdpServerDisplay for MacDisplay {
         let session = Session::start(self.config, Arc::clone(&self.shared), ctx)
             .map_err(|e| ServerError::custom("display", std::io::Error::other(format!("{e:#}"))))?;
         Ok(Box::new(session))
+    }
+}
+
+/// What one captured frame became.
+enum Coded {
+    Avc420(EncodedFrame),
+    /// AVC444: the chroma view goes too unless the encoder skipped it.
+    Avc444 {
+        luma: EncodedFrame,
+        chroma: Option<EncodedFrame>,
+    },
+}
+
+impl Coded {
+    fn bytes(&self) -> usize {
+        match self {
+            Self::Avc420(frame) => frame.data.len(),
+            Self::Avc444 { luma, chroma } => {
+                luma.data.len() + chroma.as_ref().map_or(0, |c| c.data.len())
+            }
+        }
+    }
+
+    fn keyframe(&self) -> bool {
+        match self {
+            Self::Avc420(frame) | Self::Avc444 { luma: frame, .. } => frame.keyframe,
+        }
     }
 }
 
@@ -512,11 +554,19 @@ struct Video {
     screen: Screen,
     _source: Box<dyn Send>,
     encoder: Encoder,
+    /// Present for AVC444: frames are BGRA and go out as two views, the
+    /// auxiliary one through its own encoder.
+    avc444: Option<(crate::avc444::Splitter, Encoder)>,
     region: Avc420Region,
 }
 
 impl Video {
-    fn open(screen: Screen, config: &DisplayConfig, slot: &Arc<FrameSlot>) -> anyhow::Result<Self> {
+    fn open(
+        screen: Screen,
+        config: &DisplayConfig,
+        slot: &Arc<FrameSlot>,
+        avc444: bool,
+    ) -> anyhow::Result<Self> {
         let surface = screen.surface();
         let content = (usize::from(screen.desktop.0), usize::from(screen.desktop.1));
         let buffer = (usize::from(surface.0), usize::from(surface.1));
@@ -528,19 +578,40 @@ impl Video {
                 Arc::clone(slot),
             )?)
         } else {
+            let format = if avc444 {
+                crate::capture::PIXEL_FORMAT_BGRA
+            } else {
+                crate::capture::PIXEL_FORMAT_420F
+            };
             Box::new(Self::capture(
                 screen.display_id,
                 content,
                 buffer,
                 config.fps,
+                format,
                 slot,
             )?)
         };
         let encoder = Encoder::new(buffer.0, buffer.1, config.fps, config.bitrate)?;
+        // Windows clients decode each view with its own decoder, so each view is a
+        // stream of its own, with its own parameter sets and keyframes.
+        let avc444 = avc444
+            .then(|| -> anyhow::Result<_> {
+                Ok((
+                    crate::avc444::Splitter::new(
+                        buffer.0,
+                        buffer.1,
+                        crate::avc444::Avc444Layout::V1,
+                    )?,
+                    Encoder::new(buffer.0, buffer.1, config.fps, config.bitrate)?,
+                ))
+            })
+            .transpose()?;
         Ok(Self {
             screen,
             _source: source,
             encoder,
+            avc444,
             region: Avc420Region {
                 left: 0,
                 top: 0,
@@ -554,16 +625,43 @@ impl Video {
 }
 
 impl Video {
+    /// Encodes one frame; `None` if the encoder skipped all of it.
+    fn encode(&mut self, frame: &Frame, keyframe: bool) -> anyhow::Result<Option<Coded>> {
+        let Some((splitter, aux_encoder)) = &mut self.avc444 else {
+            return Ok(self.encoder.encode(&frame.0, keyframe)?.map(Coded::Avc420));
+        };
+        let (main, aux) = splitter.split(&frame.0)?;
+        let luma = self.encoder.encode(&main, keyframe)?;
+        let chroma = aux_encoder.encode(&aux, keyframe)?;
+        match (luma, chroma) {
+            (Some(luma), chroma) if !keyframe || chroma.is_some() => {
+                Ok(Some(Coded::Avc444 { luma, chroma }))
+            }
+            (None, None) => Ok(None),
+            // AVC444 has no chroma-only update, and a view without its keyframe leaves its
+            // decoder with nothing to start from: both streams start over.
+            _ => anyhow::bail!("an AVC444 view was skipped"),
+        }
+    }
+
     fn capture(
         display_id: u32,
         content: (usize, usize),
         buffer: (usize, usize),
         fps: i32,
+        pixel_format: u32,
         slot: &Arc<FrameSlot>,
     ) -> anyhow::Result<Capture> {
         let mut attempt = 1;
         loop {
-            match Capture::start(display_id, content, buffer, fps, Arc::clone(slot)) {
+            match Capture::start(
+                display_id,
+                content,
+                buffer,
+                fps,
+                pixel_format,
+                Arc::clone(slot),
+            ) {
                 Ok(capture) => return Ok(capture),
                 Err(err) if attempt < 3 => {
                     warn!(%err, attempt, "capture did not start, retrying");
@@ -601,6 +699,8 @@ impl Pipeline {
         let mut generation = u64::MAX;
         let mut surface: Option<u16> = None;
         let mut need_keyframe = true;
+        let mut avc444 = false;
+        let mut first_sent = false;
         let mut last: Option<Frame> = None;
         let mut frames: u64 = 0;
         let mut skipped: u64 = 0;
@@ -620,13 +720,30 @@ impl Pipeline {
                 continue;
             }
 
+            // The codec depends on what the client negotiated, so the source waits for it.
+            let wanted = {
+                let server = self.gfx.lock().expect("EGFX server poisoned");
+                server
+                    .is_ready()
+                    .then(|| self.config.avc444 && server.supports_avc444())
+            };
+            let Some(wanted) = wanted else {
+                surface = None;
+                continue;
+            };
+            if wanted != avc444 || video.is_none() {
+                avc444 = wanted;
+                generation = u64::MAX;
+                info!(avc444, "video codec");
+            }
+
             let (current, screen) = self.shared.screen.snapshot();
             if current != generation {
                 // Stop the old capture before starting one on the same display.
                 drop(video.take());
                 last = None;
                 while slot.take().is_some() {}
-                video = Some(Video::open(screen, &self.config, slot)?);
+                video = Some(Video::open(screen, &self.config, slot, avc444)?);
                 generation = current;
                 surface = None;
                 debug!(?screen, "video source ready");
@@ -682,7 +799,7 @@ impl Pipeline {
             };
 
             let encode_started = Instant::now();
-            let encoded = video.encoder.encode(&frame.0, need_keyframe);
+            let encoded = video.encode(&frame, need_keyframe);
             encode_time += encode_started.elapsed();
             let encoded = match encoded {
                 Ok(Some(encoded)) => encoded,
@@ -700,8 +817,8 @@ impl Pipeline {
                     continue;
                 }
             };
-            if encoded.keyframe {
-                debug!(bytes = encoded.data.len(), "keyframe");
+            if encoded.keyframe() {
+                debug!(bytes = encoded.bytes(), "keyframe");
             }
             last = Some(frame);
 
@@ -711,12 +828,32 @@ impl Pipeline {
                 let Some(id) = surface.filter(|id| server.get_surface(*id).is_some()) else {
                     continue;
                 };
-                match server.try_send_avc420_frame(
-                    id,
-                    &encoded.data,
-                    std::slice::from_ref(&video.region),
-                    timestamp,
-                ) {
+                if let Coded::Avc444 { luma, chroma } = &encoded
+                    && !std::mem::replace(&mut first_sent, true)
+                {
+                    info!(
+                        luma = luma.data.len(),
+                        luma_keyframe = luma.keyframe,
+                        chroma = chroma.as_ref().map(|c| c.data.len()),
+                        chroma_keyframe = chroma.as_ref().map(|c| c.keyframe),
+                        "first AVC444 frame"
+                    );
+                }
+                let regions = std::slice::from_ref(&video.region);
+                let sent = match &encoded {
+                    Coded::Avc420(frame) => {
+                        server.try_send_avc420_frame(id, &frame.data, regions, timestamp)
+                    }
+                    Coded::Avc444 { luma, chroma } => server.try_send_avc444_frame(
+                        id,
+                        &luma.data,
+                        regions,
+                        chroma.as_ref().map(|c| c.data.as_slice()),
+                        chroma.as_ref().map(|_| regions),
+                        timestamp,
+                    ),
+                };
+                match sent {
                     // A lost P-frame breaks the decoder's reference chain.
                     Err(err) => {
                         debug!(?err, "frame rejected");
@@ -731,7 +868,7 @@ impl Pipeline {
             };
 
             frames += 1;
-            bytes += encoded.data.len() as u64;
+            bytes += encoded.bytes() as u64;
             if stats_at.elapsed() >= Duration::from_secs(10) {
                 let secs = stats_at.elapsed().as_secs_f64();
                 info!(

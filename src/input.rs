@@ -7,18 +7,21 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use ironrdp_server::{KeyboardEvent, MouseButton, MouseEvent, RdpServerInputHandler};
+use objc2_core_foundation::CFRetained;
 use objc2_core_foundation::CGPoint;
 use objc2_core_graphics::{
-    CGEvent, CGEventField, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton,
-    CGScrollEventUnit,
+    CGEvent, CGEventField, CGEventFlags, CGEventSource, CGEventSourceStateID, CGEventTapLocation,
+    CGEventType, CGMouseButton, CGScrollEventUnit,
 };
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 
 use crate::display::ScreenState;
 
 /// Clicks closer than this in time and distance count as a multi-click.
 const MULTI_CLICK_TIME: Duration = Duration::from_millis(500);
 const MULTI_CLICK_DISTANCE: f64 = 4.0;
+/// `kVK_Space`.
+const SPACE: u16 = 0x31;
 
 pub struct MacInput {
     /// Maps desktop pixels to global display points.
@@ -27,6 +30,15 @@ pub struct MacInput {
     position: CGPoint,
     pressed: [bool; 5],
     last_click: Option<(MouseButton, Instant, CGPoint, i64)>,
+    /// A key that switched the layout, so its release is not posted either.
+    layout_key: Option<u16>,
+    /// At the login window events come from the HID system state, as hardware
+    /// does; loginwindow ignored clicks and keys from the default source.
+    hid_source: bool,
+    /// The first key and the first click the server gets are logged: they show
+    /// whether remote input reaches the server at all.
+    logged_key: bool,
+    logged_click: bool,
 }
 
 impl MacInput {
@@ -37,6 +49,10 @@ impl MacInput {
             position: CGPoint::ZERO,
             pressed: [false; 5],
             last_click: None,
+            layout_key: None,
+            hid_source: crate::broker::login_window_requested(),
+            logged_key: false,
+            logged_click: false,
         }
     }
 
@@ -48,7 +64,14 @@ impl MacInput {
         )
     }
 
-    fn post(&self, event: Option<objc2_core_foundation::CFRetained<CGEvent>>) {
+    /// The source new events are created from; `None` is the default one.
+    fn source(&self) -> Option<CFRetained<CGEventSource>> {
+        self.hid_source
+            .then(|| CGEventSource::new(CGEventSourceStateID::HIDSystemState))
+            .flatten()
+    }
+
+    fn post(&self, event: Option<CFRetained<CGEvent>>) {
         let Some(event) = event else { return };
         CGEvent::set_flags(Some(&event), self.modifiers);
         CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&event));
@@ -60,6 +83,12 @@ impl MacInput {
             return;
         };
         trace!(code, extended, key, down, "key");
+        if !std::mem::replace(&mut self.logged_key, true) {
+            info!(code, extended, key, "first remote key");
+        }
+        if self.layout_shortcut(key, down) {
+            return;
+        }
         let mask = modifier_mask(key);
         if !mask.is_empty() {
             if down {
@@ -68,11 +97,35 @@ impl MacInput {
                 self.modifiers &= !mask;
             }
         }
-        self.post(CGEvent::new_keyboard_event(None, key, down));
+        self.post(CGEvent::new_keyboard_event(
+            self.source().as_deref(),
+            key,
+            down,
+        ));
+    }
+
+    /// The user's input-source shortcut switches the layout here instead of
+    /// reaching apps; its release is swallowed too.
+    fn layout_shortcut(&mut self, key: u16, down: bool) -> bool {
+        if !down {
+            return self.layout_key == Some(key) && self.layout_key.take().is_some();
+        }
+        if !modifier_mask(key).is_empty() {
+            return false;
+        }
+        let switched = crate::input_source::handle_shortcut(key, self.modifiers);
+        if key == SPACE && !self.modifiers.is_empty() {
+            info!(modifiers = ?self.modifiers, switched, "space with modifiers");
+        }
+        if !switched {
+            return false;
+        }
+        self.layout_key = Some(key);
+        true
     }
 
     fn unicode(&self, ch: u16, down: bool) {
-        let event = CGEvent::new_keyboard_event(None, 0, down);
+        let event = CGEvent::new_keyboard_event(self.source().as_deref(), 0, down);
         // SAFETY: one UTF-16 unit from a valid local.
         unsafe { CGEvent::keyboard_set_unicode_string(event.as_deref(), 1, &ch) };
         self.post(event);
@@ -89,7 +142,12 @@ impl MacInput {
         } else {
             (CGEventType::MouseMoved, CGMouseButton::Left)
         };
-        self.post(CGEvent::new_mouse_event(None, kind, self.position, button));
+        self.post(CGEvent::new_mouse_event(
+            self.source().as_deref(),
+            kind,
+            self.position,
+            button,
+        ));
     }
 
     fn button(&mut self, x: u16, y: u16, button: MouseButton, down: bool) {
@@ -112,6 +170,14 @@ impl MacInput {
             _ => return,
         };
         self.pressed[index] = down;
+        if down && !std::mem::replace(&mut self.logged_click, true) {
+            info!(
+                ?button,
+                x = self.position.x,
+                y = self.position.y,
+                "first remote click"
+            );
+        }
 
         // macOS does not count clicks of synthesized events; double-click
         // selection and similar need the click state set explicitly.
@@ -133,7 +199,8 @@ impl MacInput {
             self.last_click.map_or(1, |(_, _, _, n)| n)
         };
 
-        let event = CGEvent::new_mouse_event(None, kind, self.position, cg_button);
+        let event =
+            CGEvent::new_mouse_event(self.source().as_deref(), kind, self.position, cg_button);
         CGEvent::set_integer_value_field(
             event.as_deref(),
             CGEventField::MouseEventClickState,
@@ -151,7 +218,7 @@ impl MacInput {
         // RDP wheel units are 120 per notch; a third of that in pixels feels like
         // a native notch and keeps trackpad deltas smooth.
         let event = CGEvent::new_scroll_wheel_event2(
-            None,
+            self.source().as_deref(),
             CGScrollEventUnit::Pixel,
             2,
             vertical / 3,

@@ -17,6 +17,8 @@ set -u
 LABEL=com.openrdp.server
 BROKER=com.openrdp.broker
 BROKER_LOG=/Library/Logs/openrdp-broker.log
+LOGIN_AGENT=com.openrdp.loginwindow
+LOGIN_AGENT_PLIST=/Library/LaunchAgents/$LOGIN_AGENT.plist
 APP="$HOME/Applications/OpenRDP.app"
 LOG="$HOME/Library/Logs/openrdp.log"
 PORT="${OPENRDP_PORT:-3389}"
@@ -139,11 +141,14 @@ check_agent() {
     fi
 
     if ! at_login_window; then
-        if broker_loaded; then
-            ok "login-window service loaded"
-        else
+        if ! broker_loaded; then
             warn "login-window service is not loaded, so a logout stops RDP"
             hint "openrdp install --user <NAME> --pass <PASSWORD> again, and enter the administrator password"
+        elif [ ! -f "$LOGIN_AGENT_PLIST" ]; then
+            warn "login-window agent $LOGIN_AGENT_PLIST is missing, so the login window stays black"
+            hint "openrdp install --user <NAME> --pass <PASSWORD> again, and enter the administrator password"
+        else
+            ok "login-window service loaded"
         fi
     fi
 
@@ -286,8 +291,8 @@ cmd_wake() {
 cmd_restart() {
     if ! launchctl print "gui/$UID_/$LABEL" >/dev/null 2>&1; then
         if at_login_window; then
-            echo "nobody is logged in. Restart the login-window service with:" >&2
-            echo "  sudo launchctl kickstart -k system/$BROKER" >&2
+            echo "nobody is logged in. The login-window server is started by launchd;" >&2
+            echo "  sudo pkill -f 'openrdp login-window'  stops it, and launchd starts it again" >&2
         else
             echo "agent $LABEL is not loaded; run 'openrdp install ...'" >&2
         fi

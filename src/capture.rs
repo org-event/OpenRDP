@@ -1,8 +1,9 @@
 //! Screen capture through ScreenCaptureKit.
 //!
-//! Frames arrive as full-range BT.709 NV12 (`420f`), the colour space MS-RDPEGFX
-//! uses for AVC, so they go to VideoToolbox without conversion. Only the newest
-//! frame is kept: if the encoder is busy, older frames are dropped.
+//! For AVC420 frames arrive as full-range BT.709 NV12 (`420f`), the colour space
+//! MS-RDPEGFX uses for AVC, so they go to VideoToolbox without conversion. For
+//! AVC444 they arrive as BGRA, which `avc444` splits into two views. Only the
+//! newest frame is kept: if the encoder is busy, older frames are dropped.
 
 use std::sync::mpsc;
 use std::sync::{Arc, Condvar, Mutex};
@@ -25,6 +26,8 @@ use tracing::{error, warn};
 
 /// `kCVPixelFormatType_420YpCbCr8BiPlanarFullRange`.
 pub const PIXEL_FORMAT_420F: u32 = u32::from_be_bytes(*b"420f");
+/// `kCVPixelFormatType_32BGRA`.
+pub const PIXEL_FORMAT_BGRA: u32 = u32::from_be_bytes(*b"BGRA");
 
 /// ScreenCaptureKit sometimes never answers a start on a display that was
 /// reconfigured a moment ago; a fresh stream then starts normally.
@@ -156,6 +159,7 @@ impl Capture {
         content: (usize, usize),
         buffer: (usize, usize),
         fps: i32,
+        pixel_format: u32,
         slot: Arc<FrameSlot>,
     ) -> anyhow::Result<Self> {
         let display = find_display(display_id)?;
@@ -176,7 +180,7 @@ impl Capture {
                 CGPoint::ZERO,
                 CGSize::new(content.0 as f64, content.1 as f64),
             ));
-            config.setPixelFormat(PIXEL_FORMAT_420F);
+            config.setPixelFormat(pixel_format);
             config.setColorMatrix(objc2_core_video::kCVImageBufferYCbCrMatrix_ITU_R_709_2);
             config.setColorSpaceName(objc2_core_graphics::kCGColorSpaceSRGB);
             // The client draws the cursor from pointer updates (see `cursor`).
