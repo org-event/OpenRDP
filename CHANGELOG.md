@@ -15,6 +15,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - The login window showed a black screen: a server started with `launchctl bsexec` saw no display and could not wake a sleeping one. `install` now adds `com.openrdp.loginwindow`, a LaunchAgent limited to the LoginWindow session, which launchd starts as root while the login window is up. The server exits when somebody logs in.
 - A session without a virtual display looks up the main display when the client connects, instead of the one seen at startup, which may be gone.
 - At the login window input events come from the HID system state, so loginwindow takes remote clicks and keys, not only pointer moves.
+- Physical displays get their own mode back when the virtual display goes away. Left to itself macOS could pick another refresh rate, such as a 50 Hz TV timing on a 75 Hz monitor, which made text grainy.
 - `install` retries starting the login-window service while the old one is still being removed.
 
 ## [1.3.10] - 2026-11-01

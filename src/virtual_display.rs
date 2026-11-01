@@ -4,7 +4,9 @@
 //! While it exists the physical displays mirror it, so every window lives on a
 //! desktop of the client's size and the menu bar and Dock stay in reach. The
 //! mirroring is configured for this process only: macOS restores the previous
-//! arrangement when the display goes away or the process exits.
+//! arrangement when the display goes away or the process exits. Their modes
+//! are put back explicitly when mirroring stops: left to itself macOS can pick
+//! another refresh rate, such as a 50 Hz TV timing on a 75 Hz monitor.
 
 use std::time::Duration;
 
@@ -13,11 +15,12 @@ use dispatch2::{DispatchQueue, DispatchRetained};
 use objc2::msg_send;
 use objc2::rc::{Allocated, Retained};
 use objc2::runtime::{AnyClass, AnyObject, Bool};
-use objc2_core_foundation::CGSize;
+use objc2_core_foundation::{CFRetained, CGSize};
 use objc2_core_graphics::{
     CGBeginDisplayConfiguration, CGCompleteDisplayConfiguration, CGConfigureDisplayMirrorOfDisplay,
-    CGConfigureOption, CGDisplayBounds, CGDisplayConfigRef, CGDisplayPixelsHigh,
-    CGDisplayPixelsWide, CGGetActiveDisplayList, kCGNullDirectDisplay,
+    CGConfigureDisplayWithDisplayMode, CGConfigureOption, CGDisplayBounds, CGDisplayConfigRef,
+    CGDisplayCopyDisplayMode, CGDisplayMode, CGDisplayPixelsHigh, CGDisplayPixelsWide,
+    CGGetActiveDisplayList, kCGNullDirectDisplay,
 };
 use objc2_foundation::NSArray;
 use tracing::{debug, info, warn};
@@ -100,6 +103,8 @@ pub struct VirtualDisplay {
     mode: Mode,
     /// Physical displays switched to mirroring this one.
     mirrors: Vec<u32>,
+    /// Each physical display's mode before the first mirroring.
+    modes: Vec<(u32, CFRetained<CGDisplayMode>)>,
 }
 
 // SAFETY: the object is only messaged through `&mut self`, one thread at a time;
@@ -156,6 +161,7 @@ impl VirtualDisplay {
             id,
             mode,
             mirrors: Vec::new(),
+            modes: Vec::new(),
         };
         this.apply(mode)?;
         this.mirror_physical()?;
@@ -181,7 +187,7 @@ impl VirtualDisplay {
         }
         // macOS keeps the mode of a mirror set's master fixed, so leave the set
         // for the change.
-        self.unmirror()?;
+        self.unmirror(false)?;
         let applied = self.apply(mode);
         self.mirror_physical()?;
         applied?;
@@ -258,6 +264,13 @@ impl VirtualDisplay {
             .into_iter()
             .filter(|&id| id != self.id)
             .collect();
+        for &id in &physical {
+            if !self.modes.iter().any(|(known, _)| *known == id)
+                && let Some(mode) = CGDisplayCopyDisplayMode(id)
+            {
+                self.modes.push((id, mode));
+            }
+        }
         configure(|config| {
             for &id in &physical {
                 // SAFETY: config comes from CGBeginDisplayConfiguration.
@@ -272,7 +285,9 @@ impl VirtualDisplay {
         Ok(())
     }
 
-    fn unmirror(&mut self) -> anyhow::Result<()> {
+    /// Stops mirroring; `restore` also puts back the physical displays' own modes,
+    /// skipped when they mirror again at once, which would only make them resync twice.
+    fn unmirror(&mut self, restore: bool) -> anyhow::Result<()> {
         let mirrors = std::mem::take(&mut self.mirrors);
         configure(|config| {
             for &id in &mirrors {
@@ -280,6 +295,15 @@ impl VirtualDisplay {
                 check(unsafe {
                     CGConfigureDisplayMirrorOfDisplay(config, id, kCGNullDirectDisplay)
                 })?;
+                if let Some((_, mode)) =
+                    self.modes.iter().find(|(known, _)| restore && *known == id)
+                {
+                    // SAFETY: config as above; the mode came from this display.
+                    check(unsafe {
+                        CGConfigureDisplayWithDisplayMode(config, id, Some(mode), None)
+                    })
+                    .with_context(|| format!("restore the mode of display {id}"))?;
+                }
             }
             Ok(())
         })
@@ -291,7 +315,7 @@ impl Drop for VirtualDisplay {
     fn drop(&mut self) {
         // Release the physical displays first so they keep their own modes
         // instead of briefly following the vanishing master.
-        if let Err(err) = self.unmirror() {
+        if let Err(err) = self.unmirror(true) {
             warn!(%err, "cannot stop mirroring");
         }
         // Releasing `display` after this removes the display itself.
