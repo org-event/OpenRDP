@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- `--avc444`: AVC444 for clients that take it, as Windows servers send: each frame goes out as two 4:2:0 views, each its own H.264 stream, and the client rebuilds full-resolution colour, so text and coloured edges no longer smear. Off by default: Windows App for Mac drops the connection on it.
+- The keyboard layout switches over RDP. macOS ignores its input-source shortcuts for injected keys, so the server reads them from the user's settings (Keyboard Shortcuts, Input Sources) and selects the previous or next layout itself when the client sends one.
+- The log shows the first remote key and click, and whether macOS lets the server post events.
+
+### Fixed
+
+- The login window showed a black screen: a server started with `launchctl bsexec` saw no display and could not wake a sleeping one. `install` now adds `com.openrdp.loginwindow`, a LaunchAgent limited to the LoginWindow session, which launchd starts as root while the login window is up. The server exits when somebody logs in.
+- A session without a virtual display looks up the main display when the client connects, instead of the one seen at startup, which may be gone.
+- At the login window input events come from the HID system state, so loginwindow takes remote clicks and keys, not only pointer moves.
+- `install` retries starting the login-window service while the old one is still being removed.
+
 ## [1.3.10] - 2026-11-01
 
 ### Changed

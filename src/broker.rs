@@ -3,18 +3,19 @@
 //! A LaunchAgent runs only in a logged-in Aqua session, so the port is closed
 //! while the login window is up. `com.openrdp.broker` is a LaunchDaemon. It
 //! starts at boot as root and never captures the screen or posts events itself.
-//! It watches the owner of `/dev/console`: root means the login window. Then it
-//! starts this server inside that window's GUI session with `launchctl bsexec`
-//! on the `loginwindow` process, and the server drops to the user who ran
-//! `install`.
+//! The server itself is `com.openrdp.loginwindow`, a LaunchAgent limited to the
+//! LoginWindow session: launchd starts it, as root, whenever the login window
+//! is up, inside that window's GUI session. `launchctl bsexec` on `loginwindow`
+//! is not enough on current macOS: such a process sees no display and powerd
+//! rejects it. The server logs to, and reads its TLS identity from, the home of
+//! the user who ran `install`.
 //!
-//! Screen Recording and Accessibility are granted per user, to the signed app.
-//! Running as that user inside the login window's session makes those grants
-//! apply. A process that stayed root would be checked against root's database,
-//! which System Settings never offers a switch for.
+//! Screen Recording and Accessibility sit in the system TCC database and are
+//! granted to the signed app, so the grants given after install apply here too.
 //!
-//! The stream is the physical display. When somebody logs in, the daemon stops
-//! this process and the LaunchAgent — launchd starts it with the Aqua session —
+//! The daemon watches the owner of `/dev/console`; root means the login window.
+//! The stream is the physical display. When somebody logs in, the server exits
+//! (the daemon stops it if it lingers) and the per-user LaunchAgent — launchd starts it with the Aqua session —
 //! binds the port. The client connects again. Logging out runs the same path
 //! back. The FileVault screen before macOS boots is not a session this daemon
 //! can join; RDP starts once the disk is unlocked and the login window is up.
@@ -22,11 +23,11 @@
 //! The password sits in `/Library/Application Support/openrdp/broker.conf`,
 //! mode 600, root-owned. The daemon plist itself has no secret.
 
-use std::ffi::{CString, OsString};
-use std::os::unix::fs::PermissionsExt as _;
+use std::ffi::OsString;
+use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 use std::os::unix::io::AsRawFd as _;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -37,6 +38,8 @@ use crate::service::{escape, run as run_command, write_private};
 
 const LABEL: &str = "com.openrdp.broker";
 const DAEMON_PLIST: &str = "/Library/LaunchDaemons/com.openrdp.broker.plist";
+const AGENT_LABEL: &str = "com.openrdp.loginwindow";
+const AGENT_PLIST: &str = "/Library/LaunchAgents/com.openrdp.loginwindow.plist";
 const SYSTEM_DIR: &str = "/Library/Application Support/openrdp";
 const CONFIG_PATH: &str = "/Library/Application Support/openrdp/broker.conf";
 const PID_PATH: &str = "/Library/Application Support/openrdp/login-window.pid";
@@ -49,10 +52,8 @@ const SIGKILL: i32 = 9;
 
 /// Polled often enough that a login wins the port before the agent's first bind retry gives up.
 const POLL: Duration = Duration::from_millis(200);
-/// A login-window server that dies at once (the port is taken, `loginwindow` is missing) waits
-/// this long, so a fast-user-switch does not respawn it in a tight loop.
-const RESTART_BACKOFF: Duration = Duration::from_secs(30);
-const RESTART_SOON: Duration = Duration::from_secs(2);
+/// How long a freshly started login-window server waits for root to take the console.
+const CONSOLE_WAIT: Duration = Duration::from_secs(10);
 
 static STOP: AtomicBool = AtomicBool::new(false);
 /// Pid of the login-window server, so a signal can stop it without taking a lock.
@@ -62,9 +63,6 @@ unsafe extern "C" {
     fn getuid() -> u32;
     fn geteuid() -> u32;
     fn getgid() -> u32;
-    fn setuid(uid: u32) -> i32;
-    fn setgid(gid: u32) -> i32;
-    fn initgroups(user: *const i8, group: u32) -> i32;
     fn setpgid(pid: i32, pgid: i32) -> i32;
     fn kill(pid: i32, sig: i32) -> i32;
     fn dup2(src: i32, dst: i32) -> i32;
@@ -243,6 +241,36 @@ fn daemon_plist(binary: &Path) -> anyhow::Result<String> {
     ))
 }
 
+/// Launchd loads it into each LoginWindow session and starts it there as root.
+/// A clean exit (somebody logged in) is final; a crash restarts it.
+fn agent_plist(binary: &Path) -> anyhow::Result<String> {
+    let binary = escape(path_str(binary)?);
+    Ok(format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>{AGENT_LABEL}</string>
+    <key>LimitLoadToSessionType</key><string>LoginWindow</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{binary}</string>
+        <string>login-window</string>
+    </array>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key><false/>
+    </dict>
+    <key>ThrottleInterval</key><integer>10</integer>
+    <key>StandardOutPath</key><string>{BROKER_LOG}</string>
+    <key>StandardErrorPath</key><string>{BROKER_LOG}</string>
+</dict>
+</plist>
+"#
+    ))
+}
+
 /// Writes the broker config and installs the daemon. Asks for an administrator
 /// password. A failure here leaves the per-user agent in place.
 pub(crate) fn request_install(
@@ -363,14 +391,32 @@ pub(crate) fn install_system(staged: &Path) -> anyhow::Result<()> {
     let plist = daemon_plist(&config.binary)?;
     std::fs::write(DAEMON_PLIST, &plist).with_context(|| format!("write {DAEMON_PLIST}"))?;
     std::fs::set_permissions(DAEMON_PLIST, std::fs::Permissions::from_mode(0o644))?;
+    // Picked up by the next login window; nothing to bootstrap from a user session.
+    let agent = agent_plist(&config.binary)?;
+    std::fs::write(AGENT_PLIST, &agent).with_context(|| format!("write {AGENT_PLIST}"))?;
+    std::fs::set_permissions(AGENT_PLIST, std::fs::Permissions::from_mode(0o644))?;
 
     let _ = Command::new("/bin/launchctl")
         .args(["bootout", &format!("system/{LABEL}")])
         .status();
     run_command(Command::new("/bin/launchctl").args(["enable", &format!("system/{LABEL}")]))
         .context("enable the login-window service")?;
-    run_command(Command::new("/bin/launchctl").args(["bootstrap", "system", DAEMON_PLIST]))
-        .context("start the login-window service")?;
+    // Bootout returns before the old daemon is gone, and bootstrap fails until it is.
+    let mut attempt = 1;
+    loop {
+        match run_command(Command::new("/bin/launchctl").args([
+            "bootstrap",
+            "system",
+            DAEMON_PLIST,
+        ])) {
+            Ok(_) => break,
+            Err(_) if attempt < 10 => {
+                attempt += 1;
+                sleep(Duration::from_millis(500));
+            }
+            Err(err) => return Err(err).context("start the login-window service"),
+        }
+    }
     println!("Installed {DAEMON_PLIST}.");
     Ok(())
 }
@@ -382,7 +428,7 @@ pub(crate) fn uninstall_system() -> anyhow::Result<()> {
     let _ = Command::new("/bin/launchctl")
         .args(["bootout", &format!("system/{LABEL}")])
         .status();
-    for path in [DAEMON_PLIST, CONFIG_PATH, PID_PATH] {
+    for path in [AGENT_PLIST, DAEMON_PLIST, CONFIG_PATH, PID_PATH] {
         if Path::new(path).exists() {
             std::fs::remove_file(path).with_context(|| format!("remove {path}"))?;
         }
@@ -411,65 +457,23 @@ pub(crate) fn run() -> anyhow::Result<()> {
     }
     tracing::info!(user = %config.user, "watching the console");
 
-    let mut child: Option<Child> = None;
-    let mut started = Instant::now();
-    let mut next_spawn = Instant::now();
-    let mut missing_window = false;
     let mut last_uid = None;
 
     while !STOP.load(Ordering::Relaxed) {
-        if let Some(running) = child.as_mut()
-            && let Some(status) = running.try_wait().context("wait for launchctl")?
-        {
-            let ran = started.elapsed();
-            child = None;
-            if !status.success() {
-                tracing::warn!(?status, "login-window server exited");
-            }
-            next_spawn = Instant::now()
-                + if ran < RESTART_BACKOFF {
-                    RESTART_BACKOFF
-                } else {
-                    RESTART_SOON
-                };
-        }
-
         let uid = console_uid();
         if last_uid != uid {
             tracing::info!(?uid, "console user");
             last_uid = uid;
         }
+        // Launchd starts the server at the login window; the broker only makes sure
+        // it is gone once a user has the console.
         match uid.map(watch) {
-            Some(Watch::Serve) => {
-                note_login_pid();
-                if !login_server_running() && child.is_none() && Instant::now() >= next_spawn {
-                    match spawn_login_server(&config) {
-                        Ok(running) => {
-                            missing_window = false;
-                            started = Instant::now();
-                            next_spawn = started + RESTART_SOON;
-                            child = Some(running);
-                        }
-                        Err(err) => {
-                            if !missing_window {
-                                tracing::info!("{err:#}");
-                                missing_window = true;
-                            }
-                            next_spawn = Instant::now() + RESTART_SOON;
-                        }
-                    }
-                }
-            }
+            Some(Watch::Serve) => note_login_pid(),
             Some(Watch::Stop) => {
-                if child.is_some() || login_server_running() {
+                if login_server_running() {
                     tracing::info!("a user is at the console; stopping the login-window server");
                 }
-                if let Some(mut running) = child.take() {
-                    let _ = running.kill();
-                    let _ = running.wait();
-                }
                 stop_login_server();
-                missing_window = false;
             }
             // A failed stat must not tear the login-window server down.
             None => {}
@@ -483,56 +487,28 @@ pub(crate) fn run() -> anyhow::Result<()> {
         }
     }
 
-    if let Some(mut running) = child.take() {
-        let _ = running.kill();
-        let _ = running.wait();
-    }
     stop_login_server();
     tracing::info!("broker stopped");
     Ok(())
 }
 
 fn console_uid() -> Option<u32> {
-    use std::os::unix::fs::MetadataExt as _;
     std::fs::metadata("/dev/console")
         .ok()
         .map(|meta| meta.uid())
 }
 
-fn spawn_login_server(config: &Config) -> anyhow::Result<Child> {
-    let pid = loginwindow_pid()?;
-    tracing::info!(pid, "starting the server at the login window");
-    let _ = std::fs::remove_file(PID_PATH);
-    Command::new("/bin/launchctl")
-        .args(["bsexec", &pid.to_string()])
-        .arg(&config.binary)
-        .arg("login-window")
-        .stdin(Stdio::null())
-        .spawn()
-        .context("launchctl bsexec")
-}
-
-fn loginwindow_pid() -> anyhow::Result<u32> {
-    let output = Command::new("/usr/bin/pgrep")
-        .args(["-x", "loginwindow"])
-        .output()
-        .context("look up loginwindow")?;
-    let text = String::from_utf8(output.stdout).context("loginwindow pid")?;
-    text.split_whitespace()
-        .filter_map(|line| line.parse().ok())
-        .min()
-        .context("loginwindow is not running yet")
-}
-
-/// Enter the login window's session as the installing user and return the server arguments.
+/// Set up the login-window server and return its arguments.
 ///
-/// Called before any other thread exists. `bsexec` has already joined `loginwindow`'s
-/// bootstrap namespace; dropping uid afterwards keeps that namespace and makes TCC
-/// check the installing user's grants.
+/// Called by launchd's LoginWindow agent before any other thread exists. The process
+/// stays root, as every LoginWindow agent does. Screen Recording and Accessibility live
+/// in the system TCC database and follow the signed app, not the user.
+///
+/// A login ends it with a successful exit, so launchd does not start it again.
 pub(crate) fn prepare_login_window() -> anyhow::Result<Vec<OsString>> {
     require_root("login-window")?;
     let config = Config::load(Path::new(CONFIG_PATH))?;
-    // Our own process group, so the broker can signal the server without signaling launchctl's group.
+    // Our own process group, so the broker can signal the whole server.
     unsafe { setpgid(0, 0) };
     write_private(Path::new(PID_PATH), std::process::id().to_string())?;
 
@@ -547,53 +523,58 @@ pub(crate) fn prepare_login_window() -> anyhow::Result<Vec<OsString>> {
         std::env::set_var("OPENRDP_PASSWORD", &password);
         std::env::set_var("OPENRDP_LOGIN_WINDOW", "1");
     }
-    drop_privileges(config.uid, config.gid, &user)?;
     if let Err(err) = std::env::set_current_dir(&home) {
         eprintln!("cannot enter {home}: {err}");
     }
-    redirect_log(Path::new(&home));
+    redirect_log(Path::new(&home), config.uid, config.gid);
+    std::thread::Builder::new()
+        .name("openrdp-console".into())
+        .spawn(exit_on_login)
+        .context("spawn console watcher")?;
     Ok(config.args.into_iter().map(OsString::from).collect())
+}
+
+/// Hands the port to the user's agent as soon as somebody logs in.
+///
+/// After a logout launchd starts this a moment before root takes `/dev/console`, so a
+/// user at the console counts only once root has had it. A console that never turns
+/// root (fast user switching left a user there) ends the server too.
+fn exit_on_login() {
+    let started = Instant::now();
+    let mut seen_root = false;
+    loop {
+        sleep(POLL);
+        match console_uid().map(watch) {
+            Some(Watch::Serve) => seen_root = true,
+            Some(Watch::Stop) if seen_root || started.elapsed() >= CONSOLE_WAIT => {
+                eprintln!("a user is at the console; the login-window server exits");
+                std::process::exit(0);
+            }
+            _ => {}
+        }
+    }
 }
 
 pub(crate) fn login_window_requested() -> bool {
     std::env::var_os("OPENRDP_LOGIN_WINDOW").is_some_and(|value| value == "1")
 }
 
-fn drop_privileges(uid: u32, gid: u32, user: &str) -> anyhow::Result<()> {
-    let name = CString::new(user).context("user name")?;
-    // SAFETY: `name` is a valid C string; the ids come from the config written at install.
-    let failed = unsafe {
-        if initgroups(name.as_ptr(), gid) != 0 {
-            Some("initgroups")
-        } else if setgid(gid) != 0 {
-            Some("setgid")
-        } else if setuid(uid) != 0 {
-            Some("setuid")
-        } else {
-            None
-        }
-    };
-    if let Some(call) = failed {
-        bail!("{call}: {}", std::io::Error::last_os_error());
-    }
-    // SAFETY: geteuid has no preconditions. setuid(0) must fail once the privileges are gone.
-    unsafe {
-        anyhow::ensure!(geteuid() == uid, "still running as uid {}", geteuid());
-        anyhow::ensure!(setuid(0) != 0, "dropped privileges did not stick");
-    }
-    Ok(())
-}
-
-fn redirect_log(home: &Path) {
+/// Appends to the user's log; a log this root process creates is handed to the user,
+/// so the LaunchAgent can still write it after login.
+fn redirect_log(home: &Path, uid: u32, gid: u32) {
     let dir = home.join("Library/Logs");
     let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("openrdp.log");
     let Ok(file) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(dir.join("openrdp.log"))
+        .open(&path)
     else {
         return;
     };
+    if file.metadata().is_ok_and(|meta| meta.uid() == 0) {
+        let _ = std::os::unix::fs::chown(&path, Some(uid), Some(gid));
+    }
     let fd = file.as_raw_fd();
     unsafe {
         dup2(fd, 1);
@@ -708,6 +689,15 @@ mod tests {
     fn login_window_is_console_root() {
         assert_eq!(watch(0), Watch::Serve);
         assert_eq!(watch(501), Watch::Stop);
+    }
+
+    #[test]
+    fn agent_plist_runs_only_at_the_login_window() {
+        let plist = agent_plist(Path::new("/Users/me/OpenRDP.app/Contents/MacOS/openrdp")).unwrap();
+        assert!(plist.contains("<key>LimitLoadToSessionType</key><string>LoginWindow</string>"));
+        assert!(plist.contains("<string>login-window</string>"));
+        assert!(plist.contains("<key>SuccessfulExit</key><false/>"));
+        assert!(!plist.contains("password"));
     }
 
     #[test]

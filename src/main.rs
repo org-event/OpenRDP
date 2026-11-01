@@ -1,5 +1,6 @@
 //! OpenRDP: an RDP server for macOS built on IronRDP.
 
+mod avc444;
 mod broker;
 mod capture;
 mod clipboard;
@@ -8,6 +9,7 @@ mod dialog;
 mod display;
 mod encoder;
 mod input;
+mod input_source;
 mod power;
 mod service;
 mod setup;
@@ -45,6 +47,9 @@ OPTIONS:
   --sec <hybrid|tls>  hybrid = NLA (CredSSP), tls = TLS only [default: hybrid]
   --fps <N>           capture frame rate cap [default: 60]
   --bitrate <MBPS>    average H.264 bitrate [default: 20]
+  --avc444            send AVC444 to clients that take it: sharper text and
+                      colour edges, about twice the encoding. Windows App for
+                      Mac drops the connection on it, so it is off by default
   --fixed-size        stream the main display as it is instead of a virtual
                       display sized to the client
   --max-size <WxH>    largest virtual display by area; bigger clients get a
@@ -75,6 +80,7 @@ struct Args {
     pass: String,
     fps: i32,
     bitrate_mbps: u32,
+    avc444: bool,
     fixed_size: bool,
     max_pixels: u32,
     keep_display: u64,
@@ -127,6 +133,7 @@ fn parse_args(args: Vec<std::ffi::OsString>) -> anyhow::Result<Option<Args>> {
         pass,
         fps: args.opt_value_from_str("--fps")?.unwrap_or(60),
         bitrate_mbps: args.opt_value_from_str("--bitrate")?.unwrap_or(20),
+        avc444: args.contains("--avc444"),
         fixed_size: args.contains("--fixed-size"),
         max_pixels: args
             .opt_value_from_fn("--max-size", parse_area)?
@@ -292,6 +299,7 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
     let config = DisplayConfig {
         fps: args.fps,
         bitrate: args.bitrate_mbps.saturating_mul(1_000_000),
+        avc444: args.avc444 && !args.test_pattern,
         hidpi: args.hidpi,
         match_client: !args.fixed_size,
         max_pixels: args.max_pixels,
@@ -374,7 +382,9 @@ fn check_permissions() {
             "Accessibility permission missing; requested it (restart after granting): remote keyboard and mouse will be ignored"
         );
     }
-    info!(screen_recording, accessibility, "permissions");
+    // What CGEventPost checks; Accessibility normally implies it.
+    let post_events = objc2_core_graphics::CGPreflightPostEventAccess();
+    info!(screen_recording, accessibility, post_events, "permissions");
 }
 
 #[cfg(test)]
