@@ -12,6 +12,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- FreeRDP left black margins: it resizes the session to its window and draws the picture 1:1, and windows past 3072×1920 got a smaller display. Clients that resize the session now get the size they ask for, past H.264 level 5.2 since they decode in software, up to the 4096 pixels a side the VideoToolbox encoder takes; `--max-size` and level 5.2 still apply to clients that stretch the picture, like Windows App.
+- A client wider or taller than 4096 pixels got a display the encoder refused every frame of. It is scaled down whole now.
+- Scrolling from FreeRDP flew to the top or bottom of the page: its ainput channel sends wheel units in 16.16 fixed point, which the server took as whole units, 65536 times too far. A horizontal step that FreeRDP's SDL client flags as vertical too no longer scrolls up and down.
 - The login window showed a black screen: a server started with `launchctl bsexec` saw no display and could not wake a sleeping one. `install` now adds `com.openrdp.loginwindow`, a LaunchAgent limited to the LoginWindow session, which launchd starts as root while the login window is up. The server exits when somebody logs in.
 - A session without a virtual display looks up the main display when the client connects, instead of the one seen at startup, which may be gone.
 - At the login window input events come from the HID system state, so loginwindow takes remote clicks and keys, not only pointer moves.
