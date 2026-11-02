@@ -27,12 +27,24 @@ use tracing::{debug, info, warn};
 
 /// Largest supported size in pixels (8K).
 const MAX_PIXELS: (u32, u32) = (7680, 4320);
+/// Longest side the VideoToolbox H.264 encoder takes; past it every frame fails.
+const MAX_SIDE: u32 = 4096;
 /// Largest frame of H.264 levels 5.1/5.2 in 16x16 macroblocks (4096x2304).
-/// Hardware encoders and decoders on both ends stop there: past it the
-/// encoder drops frames and clients show garbage.
+/// Hardware decoders stop there and show garbage past it.
 const MAX_MACROBLOCKS: u32 = 36_864;
 /// Tries at mirroring the physical displays, 300 ms apart.
 const MIRROR_ATTEMPTS: u32 = 5;
+
+/// What bounds a client's display besides the encoder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Limit {
+    /// The client stretches the picture to its window and may decode in
+    /// hardware (Windows App): H.264 level 5.2 and at most this many pixels.
+    Stretched(u32),
+    /// The client resizes the session to its window and draws the picture 1:1
+    /// (FreeRDP): anything smaller than its window leaves black margins.
+    Exact,
+}
 
 /// A display mode in pixels; HiDPI modes have half as many points.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,7 +56,7 @@ pub struct Mode {
 
 impl Mode {
     /// The mode for a client asking for `width`x`height` pixels at `scale` percent,
-    /// in at most `max_pixels`.
+    /// within `limit`.
     ///
     /// Retina-sized requests get a HiDPI mode even at 100%, as macOS would pick
     /// for such a panel. A larger size than the budget (or than H.264 can carry)
@@ -52,10 +64,17 @@ impl Mode {
     /// picture. A scaled-down Retina request drops to 1x unless it stays
     /// Retina-sized, so the interface keeps about the size the client expects
     /// instead of doubling. The result is a whole number of points.
-    pub fn for_client(width: u32, height: u32, scale: u32, max_pixels: u32) -> Self {
+    pub fn for_client(width: u32, height: u32, scale: u32, limit: Limit) -> Self {
         let retina = |w: u32, h: u32| w >= 2880 || h >= 1800;
+        let max_pixels = match limit {
+            Limit::Stretched(max_pixels) => max_pixels,
+            Limit::Exact => u32::MAX,
+        };
         let budget = |w: u32, h: u32| {
-            w.div_ceil(16) * h.div_ceil(16) <= MAX_MACROBLOCKS && w * h <= max_pixels
+            w <= MAX_SIDE
+                && h <= MAX_SIDE
+                && w * h <= max_pixels
+                && (limit == Limit::Exact || w.div_ceil(16) * h.div_ceil(16) <= MAX_MACROBLOCKS)
         };
         let fit = |value: u32, max: u32, step: u32| (value.clamp(2 * step, max) / step) * step;
         let mut hidpi = scale >= 175 || retina(width, height);
@@ -65,7 +84,10 @@ impl Mode {
             fit(height, MAX_PIXELS.1, step),
         );
         let area = f64::from(full_w) * f64::from(full_h);
-        let mut factor = (f64::from(max_pixels) / area).sqrt().min(1.0);
+        let mut factor = (f64::from(max_pixels) / area)
+            .sqrt()
+            .min(f64::from(MAX_SIDE) / f64::from(full_w.max(full_h)))
+            .min(1.0);
         let scaled = |factor: f64| {
             let side = |value: u32| ((f64::from(value) * factor) as u32).max(2);
             (side(full_w), side(full_h))
@@ -365,12 +387,12 @@ fn check(error: objc2_core_graphics::CGError) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::Mode;
+    use super::{Limit, Mode};
 
     #[test]
     fn fits_h264() {
         // A 16" MacBook Pro in Windows App with "Optimize for Retina displays".
-        let mode = Mode::for_client(4096, 2560, 100, u32::MAX);
+        let mode = Mode::for_client(4096, 2560, 100, Limit::Stretched(u32::MAX));
         assert!(mode.hidpi);
         assert!(mode.width.div_ceil(16) * mode.height.div_ceil(16) <= 36_864);
         assert_eq!((mode.width % 2, mode.height % 2), (0, 0));
@@ -379,7 +401,7 @@ mod tests {
         assert!(mode.width >= 3800, "{mode:?}");
 
         assert_eq!(
-            Mode::for_client(2560, 1080, 100, u32::MAX),
+            Mode::for_client(2560, 1080, 100, Limit::Stretched(u32::MAX)),
             Mode {
                 width: 2560,
                 height: 1080,
@@ -387,7 +409,7 @@ mod tests {
             }
         );
         assert_eq!(
-            Mode::for_client(3456, 2234, 200, u32::MAX),
+            Mode::for_client(3456, 2234, 200, Limit::Stretched(u32::MAX)),
             Mode {
                 width: 3456,
                 height: 2234,
@@ -401,7 +423,7 @@ mod tests {
         let budget = 2560 * 1600;
         // Retina request scaled to the budget drops to 1x.
         assert_eq!(
-            Mode::for_client(4096, 2560, 200, budget),
+            Mode::for_client(4096, 2560, 200, Limit::Stretched(budget)),
             Mode {
                 width: 2560,
                 height: 1600,
@@ -410,7 +432,7 @@ mod tests {
         );
         // Within budget: untouched.
         assert_eq!(
-            Mode::for_client(2560, 1080, 100, budget),
+            Mode::for_client(2560, 1080, 100, Limit::Stretched(budget)),
             Mode {
                 width: 2560,
                 height: 1080,
@@ -418,11 +440,32 @@ mod tests {
             }
         );
         // Still Retina-sized after scaling: stays HiDPI on even pixels.
-        let mode = Mode::for_client(4096, 2560, 200, 3200 * 2000);
+        let mode = Mode::for_client(4096, 2560, 200, Limit::Stretched(3200 * 2000));
         assert!(
             mode.hidpi && mode.width * mode.height <= 3200 * 2000,
             "{mode:?}"
         );
         assert_eq!((mode.width % 2, mode.height % 2), (0, 0));
+    }
+
+    #[test]
+    fn exact_clients_get_their_size() {
+        // FreeRDP full screen on a 16" MacBook Pro set to "More Space".
+        assert_eq!(
+            Mode::for_client(4096, 2560, 200, Limit::Exact),
+            Mode {
+                width: 4096,
+                height: 2560,
+                hidpi: true
+            }
+        );
+        // Wider than the encoder takes: scaled down whole, keeping the aspect ratio.
+        let mode = Mode::for_client(5120, 2880, 200, Limit::Exact);
+        assert!(mode.width <= 4096 && mode.hidpi, "{mode:?}");
+        let ratio = f64::from(mode.width) / f64::from(mode.height);
+        assert!((ratio - 16.0 / 9.0).abs() < 0.01, "{mode:?}");
+        // A stretching client never gets a side the encoder refuses either.
+        let mode = Mode::for_client(5120, 1440, 100, Limit::Stretched(u32::MAX));
+        assert!(mode.width <= 4096, "{mode:?}");
     }
 }
