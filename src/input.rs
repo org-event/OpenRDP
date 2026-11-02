@@ -254,7 +254,13 @@ impl RdpServerInputHandler for MacInput {
             } => self.button(x, y, button, pressed),
             MouseEvent::VerticalScroll { value } => self.scroll(i32::from(value), 0),
             MouseEvent::HorizontalScroll { value } => self.scroll(0, -i32::from(value)),
-            MouseEvent::Scroll { x, y } => self.scroll(y, -x),
+            MouseEvent::Scroll { x, y } => {
+                // The ainput channel (FreeRDP) carries wheel units in 16.16 fixed
+                // point. FreeRDP's SDL client sends a horizontal step that follows
+                // a vertical one flagged as both, so equal axes are that step alone.
+                let y = if x != 0 && x == y { 0 } else { y };
+                self.scroll(y / 0x10000, -x / 0x10000);
+            }
             other => debug!(?other, "unhandled mouse event"),
         }
     }

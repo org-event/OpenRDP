@@ -32,7 +32,7 @@ use tracing::{debug, error, info, warn};
 use crate::capture::{Capture, Frame, FrameSlot, TestPattern};
 use crate::cursor::CursorWatch;
 use crate::encoder::{EncodedFrame, Encoder};
-use crate::virtual_display::{Mode, VirtualDisplay};
+use crate::virtual_display::{Limit, Mode, VirtualDisplay};
 
 /// QP reported to the client for each region; informational for AVC420.
 const REPORTED_QP: u8 = 22;
@@ -356,7 +356,12 @@ impl RdpServerDisplay for MacDisplay {
         if self.virtual_enabled() {
             let (width, height) = (u32::from(client_size.width), u32::from(client_size.height));
             info!(width, height, "client desktop size");
-            self.wanted = Some(Mode::for_client(width, height, 100, self.config.max_pixels));
+            self.wanted = Some(Mode::for_client(
+                width,
+                height,
+                100,
+                Limit::Stretched(self.config.max_pixels),
+            ));
             self.sync_virtual_display();
         }
         self.size().await
@@ -384,12 +389,10 @@ impl RdpServerDisplay for MacDisplay {
             monitors = monitors.len(),
             "client layout"
         );
-        self.wanted = Some(Mode::for_client(
-            width,
-            height,
-            scale,
-            self.config.max_pixels,
-        ));
+        // A client that sizes the session to its window draws the picture 1:1
+        // and leaves the rest black (FreeRDP), so it gets all it asks for that
+        // the encoder takes. `--max-size` is for clients that stretch.
+        self.wanted = Some(Mode::for_client(width, height, scale, Limit::Exact));
         self.sync_virtual_display();
     }
 

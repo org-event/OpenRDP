@@ -53,7 +53,9 @@ OPTIONS:
   --fixed-size        stream the main display as it is instead of a virtual
                       display sized to the client
   --max-size <WxH>    largest virtual display by area; bigger clients get a
-                      proportionally smaller one [default: 3072x1920]
+                      proportionally smaller one they stretch. Clients that
+                      resize the session to their window get up to 4096 a side
+                      [default: 3072x1920]
   --keep-display <SEC>
                       keep the virtual display after a disconnect, so windows
                       stay put for a reconnect; 0 removes it at once
