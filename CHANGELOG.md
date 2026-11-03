@@ -9,6 +9,12 @@ All notable changes to this project are documented here. The format follows [Kee
 - Files through the clipboard, both ways. Files copied in Finder are offered to the client and read from disk as it pastes. Files copied on the client are downloaded into `~/Library/Caches/OpenRDP/Clipboard` and put on the pasteboard for Finder. Copies over 16 GB are refused, and names that would leave the download folder are dropped.
 - Curtain: the Mac's own displays go dark while a client is connected, when the client asks for it with `curtain` as its alternate shell (FreeRDP `/shell:curtain`). The server sets their gamma to black, so the capture is unaffected. Brightness returns when the client leaves or the server stops, crashes included. `--curtain always|never` overrides the client. IronRDP (fork) now passes the client's alternate shell and working directory to the server.
 - Sound: what the Mac plays goes to the client over `rdpsnd`, as 16-bit PCM at 48 or 44.1 kHz, captured by ScreenCaptureKit without the server's own sound. `--no-sound` turns it off. Closes #4.
+- OpenRDP Client, a Mac app in `client/` that connects to OpenRDP servers with FreeRDP inside it, for Apple Silicon and Intel Macs:
+  - saved Macs, with passwords in the Keychain, passed to FreeRDP on stdin so they never show in `ps`;
+  - one-click AVC444 sessions;
+  - FreeRDP's own shortcuts on right ⌘ + ⌥ instead of right Shift, which broke capital П, К, В and Ь;
+  - ⌘Space, ⌘Tab and ⌘Q go to the remote Mac, so the layout switches there.
+- Releases carry the client as `openrdp-client-<version>-universal.dmg` next to the server. CI builds it on every pull request and checks that every binary in it is universal and loads nothing from outside the app or macOS.
 
 ## [1.4.0] - 2026-11-03
 
