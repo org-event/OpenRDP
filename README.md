@@ -14,6 +14,7 @@ An open RDP server for macOS, built on [IronRDP](https://github.com/Devolutions/
 - **Capture**: ScreenCaptureKit, straight to NV12 full-range BT.709 (the AVC color space of MS-RDPEGFX), with no conversion.
 - **Encoding**: VideoToolbox H.264, realtime, low latency, no B-frames.
 - **Graphics**: the EGFX channel, AVC420 or AVC444. AVC444 is full-resolution colour, as Windows servers send it, so text and coloured edges stay sharp. It goes by default to FreeRDP-based clients, known by the advanced input channel they open; Windows App for Mac negotiates AVC444 and then drops the connection on it, so it gets AVC420. `--avc444` sends AVC444 to every client that negotiates it, `--no-avc444` to none. Windows App for Mac drops the connection on it, so it stays off by default. The surface is aligned to 16 and the extra pixels are cut off by a region.
+- **Bitrate**: `--bitrate` (20 Mbit/s) is the ceiling. When frames are acknowledged well later than the best time seen on the connection, the server cuts the bitrate by a quarter, down to a quarter of the ceiling, and raises it back slowly while the acknowledgements stay quick. The frame rate follows the link by itself: at most three frames are in flight.
 - **Screen size**: a virtual display (`CGVirtualDisplay`) matches the client's window, in HiDPI, capped at 3072×1920 by area (`--max-size`) for clients that stretch the picture; a client that resizes the session to its window, like FreeRDP with `/dynamic-resolution`, gets the size it asks for, up to 4096 pixels a side, as far as the hardware encoder goes. It survives a disconnect for 5 minutes, so windows stay put when you reconnect.
 - **Input**: `CGEventPost`. RDP scancodes are mapped to Mac keycodes: Win → Command, Alt → Option. Double clicks are counted.
 - **Cursor**: sent as RDP pointer updates and drawn by the client, so it moves without video latency.
@@ -108,7 +109,6 @@ On another machine, `openrdp-doctor wol <MAC> [broadcast]` sends a Wake-on-LAN p
 
 The roadmap and design notes are in [docs/plan.md](docs/plan.md) (in Russian). Main gaps:
 
-- adaptive bitrate and frame rate;
 - sound, drive redirection, file copy through the clipboard;
 - curtain mode (the host's own screen goes dark);
 - Intel Macs.

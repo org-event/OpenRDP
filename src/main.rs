@@ -11,6 +11,7 @@ mod encoder;
 mod input;
 mod input_source;
 mod power;
+mod rate;
 mod service;
 mod setup;
 mod signing;
