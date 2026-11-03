@@ -43,12 +43,23 @@ const CURSOR_POLL: Duration = Duration::from_millis(30);
 /// bottleneck every extra frame here only adds a frame time of latency.
 const MAX_FRAMES_IN_FLIGHT: u32 = 3;
 
+/// When to send AVC444: it needs a client that really decodes it, and
+/// Windows App for Mac negotiates it, then drops the connection on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Avc444 {
+    Off,
+    /// For FreeRDP-based clients, known by the advanced input channel they
+    /// open; the Microsoft clients do not have it.
+    Auto,
+    On,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct DisplayConfig {
     pub fps: i32,
     pub bitrate: u32,
-    /// Send AVC444v2 to clients that take it.
-    pub avc444: bool,
+    /// When to send AVC444 to clients that negotiate it.
+    pub avc444: Avc444,
     /// Stream physical displays in pixels instead of points.
     pub hidpi: bool,
     /// Stream a virtual display sized to the client instead of the main display.
@@ -164,6 +175,8 @@ pub struct Shared {
     /// Bumped on every session start, so a pending removal can tell that a
     /// client came back in the meantime.
     session_epoch: AtomicU64,
+    /// The client of this connection opened FreeRDP's advanced input channel.
+    advanced_input: Arc<AtomicBool>,
 }
 
 /// Time from sending a frame to its acknowledgement, for the stats log.
@@ -203,8 +216,9 @@ impl AckStats {
 }
 
 impl Shared {
-    pub fn new(screen: Arc<ScreenState>) -> Self {
+    pub fn new(screen: Arc<ScreenState>, advanced_input: Arc<AtomicBool>) -> Self {
         Self {
+            advanced_input,
             events: Mutex::new(None),
             slot: Arc::default(),
             screen,
@@ -353,6 +367,8 @@ impl RdpServerDisplay for MacDisplay {
 
     async fn request_initial_size(&mut self, client_size: DesktopSize) -> DesktopSize {
         crate::power::wake_display();
+        // A new connection: the channel is opened again if the client has it.
+        self.shared.advanced_input.store(false, Ordering::Release);
         if self.virtual_enabled() {
             let (width, height) = (u32::from(client_size.width), u32::from(client_size.height));
             info!(width, height, "client desktop size");
@@ -726,9 +742,14 @@ impl Pipeline {
             // The codec depends on what the client negotiated, so the source waits for it.
             let wanted = {
                 let server = self.gfx.lock().expect("EGFX server poisoned");
-                server
-                    .is_ready()
-                    .then(|| self.config.avc444 && server.supports_avc444())
+                server.is_ready().then(|| {
+                    server.supports_avc444()
+                        && match self.config.avc444 {
+                            Avc444::Off => false,
+                            Avc444::Auto => self.shared.advanced_input.load(Ordering::Acquire),
+                            Avc444::On => true,
+                        }
+                })
             };
             let Some(wanted) = wanted else {
                 surface = None;

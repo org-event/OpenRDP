@@ -4,6 +4,7 @@
 //! Option, so a client set to send Command as the Windows key gets real Command.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use ironrdp_server::{KeyboardEvent, MouseButton, MouseEvent, RdpServerInputHandler};
@@ -39,11 +40,15 @@ pub struct MacInput {
     /// whether remote input reaches the server at all.
     logged_key: bool,
     logged_click: bool,
+    /// Set when the client opens FreeRDP's advanced input channel; the display
+    /// then sends it AVC444.
+    advanced_input: Arc<AtomicBool>,
 }
 
 impl MacInput {
-    pub fn new(screen: Arc<ScreenState>) -> Self {
+    pub fn new(screen: Arc<ScreenState>, advanced_input: Arc<AtomicBool>) -> Self {
         Self {
+            advanced_input,
             screen,
             modifiers: CGEventFlags::empty(),
             position: CGPoint::ZERO,
@@ -263,6 +268,11 @@ impl RdpServerInputHandler for MacInput {
             }
             other => debug!(?other, "unhandled mouse event"),
         }
+    }
+
+    fn advanced_input_opened(&mut self) {
+        info!("client opened the advanced input channel (FreeRDP)");
+        self.advanced_input.store(true, Ordering::Release);
     }
 }
 
