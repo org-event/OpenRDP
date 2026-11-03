@@ -41,8 +41,33 @@ struct Server: Identifiable, Codable, Hashable {
     var windowWidth: Int?
     var windowHeight: Int?
     var clipboard = true
+    /// Darken the server Mac's own displays during the session. The OpenRDP
+    /// server does it when the RDP alternate shell holds `curtain`.
+    var curtain = false
     /// Extra FreeRDP options, one per line, for example `/network:lan`.
     var extraArguments = ""
+
+    init() {}
+
+    /// Fields missing from servers.json (saved by an older version) keep their
+    /// defaults instead of failing the whole list.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Server()
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? d.id
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? d.name
+        host = try c.decodeIfPresent(String.self, forKey: .host) ?? d.host
+        port = try c.decodeIfPresent(Int.self, forKey: .port) ?? d.port
+        user = try c.decodeIfPresent(String.self, forKey: .user) ?? d.user
+        codec = try c.decodeIfPresent(Codec.self, forKey: .codec) ?? d.codec
+        certificate = try c.decodeIfPresent(Certificate.self, forKey: .certificate) ?? d.certificate
+        fullscreen = try c.decodeIfPresent(Bool.self, forKey: .fullscreen) ?? d.fullscreen
+        windowWidth = try c.decodeIfPresent(Int.self, forKey: .windowWidth)
+        windowHeight = try c.decodeIfPresent(Int.self, forKey: .windowHeight)
+        clipboard = try c.decodeIfPresent(Bool.self, forKey: .clipboard) ?? d.clipboard
+        curtain = try c.decodeIfPresent(Bool.self, forKey: .curtain) ?? d.curtain
+        extraArguments = try c.decodeIfPresent(String.self, forKey: .extraArguments) ?? d.extraArguments
+    }
 
     var displayName: String { name.isEmpty ? host : name }
 
