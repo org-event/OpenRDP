@@ -1,0 +1,252 @@
+import AppKit
+import SwiftUI
+
+struct ContentView: View {
+    @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var store: ServerStore
+    @State private var selection: UUID?
+    @State private var editing: Server?
+
+    var body: some View {
+        NavigationSplitView {
+            List(selection: $selection) {
+                ForEach(store.servers) { server in
+                    ServerRow(server: server, session: model.session(for: server))
+                        .tag(server.id)
+                        .contextMenu { menu(for: server) }
+                }
+                .onMove { store.move(from: $0, to: $1) }
+            }
+            .navigationSplitViewColumnWidth(min: 200, ideal: 230)
+            .toolbar {
+                ToolbarItem {
+                    Button { editing = Server() } label: { Label("Добавить Mac", systemImage: "plus") }
+                }
+            }
+            .contextMenu(forSelectionType: UUID.self) { _ in } primaryAction: { ids in
+                ids.compactMap { id in store.servers.first { $0.id == id } }.forEach(model.connect)
+            }
+        } detail: {
+            VStack(spacing: 0) {
+                if model.binary == nil { MissingFreeRDPBanner() }
+                if let server = store.servers.first(where: { $0.id == selection }) {
+                    ServerDetail(server: server, edit: { editing = server })
+                } else {
+                    EmptyDetail(add: { editing = Server() })
+                }
+            }
+        }
+        .sheet(item: $editing) { server in
+            ServerEditor(server: server) { saved in
+                store.save(saved)
+                selection = saved.id
+            }
+        }
+        .alert("Не удалось подключиться", isPresented: Binding(
+            get: { model.launchError != nil }, set: { if !$0 { model.launchError = nil } })
+        ) {
+            Button("OK") {}
+        } message: {
+            Text(model.launchError ?? "")
+        }
+        .onAppear { if selection == nil { selection = store.servers.first?.id } }
+    }
+
+    @ViewBuilder private func menu(for server: Server) -> some View {
+        Button("Подключиться") { model.connect(server) }
+        Button("Изменить…") { editing = server }
+        Divider()
+        Button("Удалить", role: .destructive) { store.delete(server) }
+    }
+}
+
+private struct ServerRow: View {
+    let server: Server
+    @ObservedObject private var sessionBox: SessionBox
+
+    init(server: Server, session: Session?) {
+        self.server = server
+        sessionBox = SessionBox(session)
+    }
+
+    var body: some View {
+        HStack {
+            Image(systemName: "desktopcomputer")
+                .foregroundStyle(sessionBox.session?.isRunning == true ? Color.green : Color.secondary)
+            VStack(alignment: .leading) {
+                Text(server.displayName)
+                Text(server.user.isEmpty ? server.address : "\(server.user)@\(server.address)")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+/// Lets a view observe a session that may not exist yet.
+private final class SessionBox: ObservableObject {
+    let session: Session?
+    init(_ session: Session?) { self.session = session }
+}
+
+private struct ServerDetail: View {
+    @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var store: ServerStore
+    let server: Server
+    let edit: () -> Void
+
+    private var session: Session? { model.session(for: server) }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(server.displayName).font(.title.bold())
+                        Text(server.user.isEmpty ? server.address : "\(server.user)@\(server.address)")
+                            .foregroundStyle(.secondary).textSelection(.enabled)
+                    }
+                    Spacer()
+                    Button("Изменить…", action: edit)
+                }
+
+                HStack(spacing: 12) {
+                    if session?.isRunning == true {
+                        Button { model.disconnect(server) } label: {
+                            Label("Отключиться", systemImage: "xmark.circle").frame(minWidth: 140)
+                        }
+                        .controlSize(.large)
+                        Label("Сеанс открыт", systemImage: "circle.fill")
+                            .foregroundStyle(.green).labelStyle(.titleAndIcon)
+                    } else {
+                        Button { model.connect(server) } label: {
+                            Label("Подключиться", systemImage: "play.fill").frame(minWidth: 140)
+                        }
+                        .controlSize(.large)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(model.binary == nil)
+                    }
+                    Spacer()
+                    if session != nil {
+                        Button("Журнал") { model.showLog(for: server) }
+                    }
+                }
+
+                if case .ended(let problem?) = session?.state {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(problem, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        if problem == FreeRDP.certificateProblem {
+                            Button("Забыть сертификат сервера") { model.forgetCertificate(for: server) }
+                        }
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                }
+
+                GroupBox("Параметры") {
+                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
+                        row("Видео", server.codec.title)
+                        row("Окно", server.fullscreen ? "Во весь экран"
+                            : server.windowWidth.map { "\($0)×\(server.windowHeight ?? 0)" } ?? "Размер по умолчанию")
+                        row("Сертификат", server.certificate.title)
+                        row("Буфер обмена", server.clipboard ? "Общий" : "Выключен")
+                        if !server.extraArgumentList.isEmpty {
+                            row("Дополнительно", server.extraArgumentList.joined(separator: " "))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(6)
+                }
+
+                HotkeyList()
+            }
+            .padding(24)
+            .frame(maxWidth: 640, alignment: .leading)
+        }
+    }
+
+    private func row(_ title: String, _ value: String) -> some View {
+        GridRow {
+            Text(title).foregroundStyle(.secondary)
+            Text(value).textSelection(.enabled)
+        }
+    }
+}
+
+/// FreeRDP's own shortcuts inside a session, with the modifier chosen in Settings.
+struct HotkeyList: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        GroupBox("Сочетания FreeRDP в сеансе") {
+            VStack(alignment: .leading, spacing: 6) {
+                if model.hotkeyModifier == .off {
+                    Text("Выключены в настройках.").foregroundStyle(.secondary)
+                } else {
+                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
+                        ForEach(freerdpShortcuts, id: \.key) { shortcut in
+                            GridRow {
+                                Text("\(model.hotkeyModifier.symbol) + \(shortcut.key)")
+                                    .font(.body.monospaced())
+                                Text(shortcut.action)
+                            }
+                        }
+                    }
+                }
+                if model.passSystemShortcuts {
+                    Text("⌘Пробел, ⌘Tab, ⌘Q и другие системные сочетания уходят на удалённый Mac, пока окно сеанса активно и курсор над ним. Вернуть их этому Mac: модификатор + G.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(6)
+        }
+    }
+}
+
+private struct EmptyDetail: View {
+    @EnvironmentObject private var store: ServerStore
+    let add: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "desktopcomputer").font(.system(size: 48)).foregroundStyle(.secondary)
+            Text(store.servers.isEmpty ? "Нет сохранённых Mac" : "Выберите Mac слева").font(.title3)
+            if store.servers.isEmpty {
+                Button("Добавить Mac…", action: add).controlSize(.large)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct MissingFreeRDPBanner: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.octagon.fill").foregroundStyle(.red).font(.title2)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("sdl-freerdp не найден").font(.headline)
+                Text("Искали в /usr/local/bin (Homebrew на Intel) и /opt/homebrew/bin (Apple Silicon). Установите FreeRDP через Homebrew или укажите путь в настройках.")
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Text("brew install freerdp").font(.body.monospaced()).textSelection(.enabled)
+                    Button("Скопировать") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString("brew install freerdp", forType: .string)
+                    }
+                    if #available(macOS 14, *) {
+                        SettingsLink { Text("Настройки…") }
+                    } else {
+                        Button("Настройки…") { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }
+                    }
+                }
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(.red.opacity(0.1))
+    }
+}
