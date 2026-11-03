@@ -185,6 +185,9 @@ struct AckStats {
     sent: std::collections::VecDeque<(u32, Instant)>,
     total: Duration,
     count: u32,
+    /// The same, over the bitrate control's period.
+    period_total: Duration,
+    period_count: u32,
 }
 
 impl AckStats {
@@ -198,8 +201,11 @@ impl AckStats {
     fn acked(&mut self, frame_id: u32) {
         if let Some(index) = self.sent.iter().position(|(id, _)| *id == frame_id) {
             let (_, at) = self.sent.remove(index).expect("index from position");
-            self.total += at.elapsed();
+            let delay = at.elapsed();
+            self.total += delay;
             self.count += 1;
+            self.period_total += delay;
+            self.period_count += 1;
         }
     }
 
@@ -212,6 +218,18 @@ impl AckStats {
         };
         (self.total, self.count) = (Duration::ZERO, 0);
         average
+    }
+
+    /// Average acknowledgement delay in ms since the last call, and over how many frames.
+    fn take_period(&mut self) -> (f64, u32) {
+        let count = self.period_count;
+        let average = if count == 0 {
+            0.0
+        } else {
+            self.period_total.as_secs_f64() * 1000.0 / f64::from(count)
+        };
+        (self.period_total, self.period_count) = (Duration::ZERO, 0);
+        (average, count)
     }
 }
 
@@ -644,6 +662,13 @@ impl Video {
 }
 
 impl Video {
+    fn set_bitrate(&self, bitrate: u32) {
+        self.encoder.set_bitrate(bitrate);
+        if let Some((_, aux_encoder)) = &self.avc444 {
+            aux_encoder.set_bitrate(bitrate);
+        }
+    }
+
     /// Encodes one frame; `None` if the encoder skipped all of it.
     fn encode(&mut self, frame: &Frame, keyframe: bool) -> anyhow::Result<Option<Coded>> {
         let Some((splitter, aux_encoder)) = &mut self.avc444 else {
@@ -727,6 +752,8 @@ impl Pipeline {
         let mut encode_time = Duration::ZERO;
         let mut bytes: u64 = 0;
         let mut stats_at = Instant::now();
+        let mut rate = crate::rate::RateControl::new(self.config.bitrate);
+        let mut rate_at = Instant::now();
 
         loop {
             seen = slot.wait(seen, Duration::from_millis(500));
@@ -767,12 +794,27 @@ impl Pipeline {
                 drop(video.take());
                 last = None;
                 while slot.take().is_some() {}
-                video = Some(Video::open(screen, &self.config, slot, avc444)?);
+                let opened = Video::open(screen, &self.config, slot, avc444)?;
+                opened.set_bitrate(rate.current());
+                video = Some(opened);
                 generation = current;
                 surface = None;
                 debug!(?screen, "video source ready");
             }
             let video = video.as_mut().expect("opened above");
+            if rate_at.elapsed() >= crate::rate::PERIOD {
+                rate_at = Instant::now();
+                let (average_ms, samples) =
+                    self.shared.acks.lock().expect("poisoned").take_period();
+                if let Some(bitrate) = rate.update(average_ms, samples) {
+                    info!(
+                        mbps = format!("{:.1}", f64::from(bitrate) / 1e6),
+                        ack_ms = format!("{average_ms:.0}"),
+                        "bitrate"
+                    );
+                    video.set_bitrate(bitrate);
+                }
+            }
             let (desk_w, desk_h) = video.screen.desktop;
             let surface_size = video.screen.surface();
 

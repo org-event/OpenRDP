@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- The bitrate follows the link. When frames are acknowledged well later than the best time seen on the connection, the server cuts it by a quarter, down to a quarter of `--bitrate`, and raises it back slowly while acknowledgements stay quick. Closes #3.
 - AVC444 by default for FreeRDP-based clients, which the server knows by the advanced input channel (`FreeRDP::Advanced::Input`) they open. Windows App for Mac does not open it and keeps AVC420, since it drops the connection on AVC444. `--avc444` forces AVC444 for every client that negotiates it, `--no-avc444` turns it off. Closes #2.
 - Several RDP accounts, and `openrdp user list|set|remove|rename` to manage them without reinstalling. They live in `~/Library/Application Support/openrdp/users` (mode 600), shared by the user agent and the login-window server, and changes apply from the next connection without a restart. NLA checks each client against the account with its name: IronRDP comes from the `org-event/IronRDP` fork until upstream takes the change.
 
