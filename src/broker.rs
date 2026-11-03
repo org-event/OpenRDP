@@ -20,8 +20,10 @@
 //! back. The FileVault screen before macOS boots is not a session this daemon
 //! can join; RDP starts once the disk is unlocked and the login window is up.
 //!
-//! The password sits in `/Library/Application Support/openrdp/broker.conf`,
-//! mode 600, root-owned. The daemon plist itself has no secret.
+//! The server reads the RDP accounts from that home too (see `users`). The
+//! password in `/Library/Application Support/openrdp/broker.conf`, mode 600,
+//! root-owned, only stands in when that file is missing. The daemon plist
+//! itself has no secret.
 
 use std::ffi::OsString;
 use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};

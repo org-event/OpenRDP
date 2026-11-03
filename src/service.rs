@@ -58,10 +58,11 @@ pub(crate) fn installed() -> bool {
     paths().is_ok_and(|paths| paths.plist.is_file())
 }
 
-/// Installs and starts the agent with `server_args` (already validated); the
-/// password comes separately so it stays out of the process list.
-pub fn install(server_args: &[String], password: &str) -> anyhow::Result<()> {
-    let prepared = prepare(server_args, password)?;
+/// Installs and starts the agent with `server_args` (already validated), and
+/// adds `user` to the RDP accounts or sets its password. The password stays out
+/// of the process list and the plist.
+pub fn install(server_args: &[String], user: &str, password: &str) -> anyhow::Result<()> {
+    let prepared = prepare(server_args, user, password)?;
     start_agent()?;
     println!(
         "Installed {} and started it at login.",
@@ -92,8 +93,8 @@ pub fn install(server_args: &[String], password: &str) -> anyhow::Result<()> {
 /// Writes the app and the agent, and asks for the login-window service, but
 /// does not start the server. The graphical install starts it only after both
 /// permissions are on, so the first process already has them.
-pub fn install_waiting(server_args: &[String], password: &str) -> anyhow::Result<()> {
-    let prepared = prepare(server_args, password)?;
+pub fn install_waiting(server_args: &[String], user: &str, password: &str) -> anyhow::Result<()> {
+    let prepared = prepare(server_args, user, password)?;
     crate::broker::request_install(&prepared.paths.binary, server_args, password)
 }
 
@@ -130,8 +131,12 @@ struct Prepared {
     replaced_legacy: bool,
 }
 
-fn prepare(server_args: &[String], password: &str) -> anyhow::Result<Prepared> {
+fn prepare(server_args: &[String], user: &str, password: &str) -> anyhow::Result<Prepared> {
     let paths = paths()?;
+    let accounts_path = crate::users::path()?;
+    let mut accounts = crate::users::load(&accounts_path)?.unwrap_or_default();
+    crate::users::set(&mut accounts, user, password)?;
+    crate::users::save(&accounts_path, &accounts)?;
     let removed = bootout(OLD_LABEL);
     let replaced_legacy = removed || remove_legacy(&home_dir()?)?;
     stop();
@@ -149,7 +154,7 @@ fn prepare(server_args: &[String], password: &str) -> anyhow::Result<Prepared> {
 
     let mut program = vec![paths.binary.display().to_string()];
     program.extend(server_args.iter().cloned());
-    write_private(&paths.plist, agent_plist(&program, password, &paths.log))?;
+    write_private(&paths.plist, agent_plist(&program, &paths.log))?;
     Ok(Prepared {
         paths,
         replaced_legacy,
@@ -353,7 +358,7 @@ fn info_plist(version: &str) -> String {
     )
 }
 
-fn agent_plist(program: &[String], password: &str, log: &Path) -> String {
+fn agent_plist(program: &[String], log: &Path) -> String {
     let arguments: String = program
         .iter()
         .map(|arg| format!("        <string>{}</string>\n", escape(arg)))
@@ -368,10 +373,6 @@ fn agent_plist(program: &[String], password: &str, log: &Path) -> String {
     <key>ProgramArguments</key>
     <array>
 {arguments}    </array>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>OPENRDP_PASSWORD</key><string>{password}</string>
-    </dict>
     <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><true/>
     <key>ThrottleInterval</key><integer>10</integer>
@@ -381,8 +382,7 @@ fn agent_plist(program: &[String], password: &str, log: &Path) -> String {
     <key>StandardErrorPath</key><string>{log}</string>
 </dict>
 </plist>
-"#,
-        password = escape(password)
+"#
     )
 }
 
@@ -401,13 +401,12 @@ mod tests {
     #[test]
     fn agent_plist_escapes() {
         let plist = agent_plist(
-            &["/a/openrdp".into(), "--user".into(), "ivan".into()],
-            "p<&>",
+            &["/a/openrdp".into(), "--user".into(), "<ivan>".into()],
             Path::new("/tmp/log"),
         );
-        assert!(plist.contains("<string>p&lt;&amp;&gt;</string>"));
+        assert!(plist.contains("<string>&lt;ivan&gt;</string>"));
         assert!(plist.contains("<string>--user</string>"));
-        assert!(plist.contains("<key>OPENRDP_PASSWORD</key>"));
+        assert!(!plist.contains("PASSWORD"));
         assert!(plist.contains("<string>com.openrdp.server</string>"));
     }
 
