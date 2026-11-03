@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- AVC444 by default for FreeRDP-based clients, which the server knows by the advanced input channel (`FreeRDP::Advanced::Input`) they open. Windows App for Mac does not open it and keeps AVC420, since it drops the connection on AVC444. `--avc444` forces AVC444 for every client that negotiates it, `--no-avc444` turns it off. Closes #2.
 - Several RDP accounts, and `openrdp user list|set|remove|rename` to manage them without reinstalling. They live in `~/Library/Application Support/openrdp/users` (mode 600), shared by the user agent and the login-window server, and changes apply from the next connection without a restart. NLA checks each client against the account with its name: IronRDP comes from the `org-event/IronRDP` fork until upstream takes the change.
 
 - `--avc444`: AVC444 for clients that take it, as Windows servers send: each frame goes out as two 4:2:0 views, each its own H.264 stream, and the client rebuilds full-resolution colour, so text and coloured edges no longer smear. Off by default: Windows App for Mac drops the connection on it.
