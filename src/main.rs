@@ -16,13 +16,14 @@ mod setup;
 mod signing;
 mod tls;
 mod update;
+mod users;
 mod virtual_display;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::{Context as _, bail};
-use ironrdp_server::{Credentials, RdpServer, ServerError, ServerErrorKind};
+use ironrdp_server::{RdpServer, ServerError, ServerErrorKind};
 use objc2_core_graphics::CGMainDisplayID;
 use tracing::{info, warn};
 
@@ -33,10 +34,12 @@ const HELP: &str = "\
 openrdp — RDP server for macOS
 
 USAGE:
-  openrdp --user <NAME> --pass <PASSWORD> [OPTIONS]
+  openrdp [--user <NAME> --pass <PASSWORD>] [OPTIONS]
   openrdp install --user <NAME> --pass <PASSWORD> [OPTIONS]
                       run at login as ~/Applications/OpenRDP.app (LaunchAgent)
                       and serve the login window (asks for an administrator password)
+  openrdp user <list|set|remove|rename>
+                      the RDP accounts; see openrdp user --help
   openrdp                  without a terminal: ask for the account, then for
                            the administrator password, then Screen Recording and
                            Accessibility, and start only after both are on
@@ -72,14 +75,17 @@ OPTIONS:
                       auto installs it, off does not check
   --no-update         same as --update off
 
-Password may also come from OPENRDP_PASSWORD. Logs: RUST_LOG=openrdp=debug.
+The accounts live in ~/Library/Application Support/openrdp/users; --user and
+--pass only add the first one. Password may also come from OPENRDP_PASSWORD.
+Logs: RUST_LOG=openrdp=debug.
 ";
 
 struct Args {
     bind: SocketAddr,
     hybrid: bool,
-    user: String,
-    pass: String,
+    /// The first account, for a server that has none yet.
+    user: Option<String>,
+    pass: Option<String>,
     fps: i32,
     bitrate_mbps: u32,
     avc444: bool,
@@ -119,19 +125,15 @@ fn parse_args(args: Vec<std::ffi::OsString>) -> anyhow::Result<Option<Args>> {
         other => bail!("unknown --sec {other}"),
     };
     let pass = match args.opt_value_from_str("--pass")? {
-        Some(pass) => pass,
-        None => {
-            std::env::var("OPENRDP_PASSWORD").context("--pass or OPENRDP_PASSWORD is required")?
-        }
+        Some(pass) => Some(pass),
+        None => std::env::var("OPENRDP_PASSWORD").ok(),
     };
     let parsed = Args {
         bind: args
             .opt_value_from_str("--bind")?
             .unwrap_or_else(|| "0.0.0.0:3389".parse().expect("valid address")),
         hybrid,
-        user: args
-            .value_from_str("--user")
-            .context("--user is required")?,
+        user: args.opt_value_from_str("--user")?,
         pass,
         fps: args.opt_value_from_str("--fps")?.unwrap_or(60),
         bitrate_mbps: args.opt_value_from_str("--bitrate")?.unwrap_or(20),
@@ -175,7 +177,35 @@ fn install(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
             server_args.push(arg);
         }
     }
-    service::install(&server_args, &args.pass)
+    let (Some(user), Some(pass)) = (&args.user, &args.pass) else {
+        bail!("install needs --user and --pass (or OPENRDP_PASSWORD)");
+    };
+    service::install(&server_args, user, pass)
+}
+
+/// The accounts the server accepts: the account file, or `--user` and `--pass`
+/// for a server that has none yet, which the user agent then writes there.
+fn accounts(
+    path: &std::path::Path,
+    user: Option<&str>,
+    pass: Option<&str>,
+) -> anyhow::Result<Vec<users::Account>> {
+    if let Some(accounts) = users::load(path)?.filter(|accounts| !accounts.is_empty()) {
+        info!(accounts = accounts.len(), "accounts");
+        return Ok(accounts);
+    }
+    let (Some(user), Some(pass)) = (user, pass) else {
+        bail!("no RDP accounts: add one with `openrdp user set <NAME>`, or pass --user and --pass");
+    };
+    let mut accounts = Vec::new();
+    users::set(&mut accounts, user, pass)?;
+    // The login-window server runs as root and would leave a file the user
+    // cannot read; the user agent writes it at its first start.
+    if !broker::login_window_requested() {
+        users::save(path, &accounts)?;
+        info!(path = %path.display(), "wrote the account file");
+    }
+    Ok(accounts)
 }
 
 fn main() -> anyhow::Result<()> {
@@ -207,6 +237,10 @@ fn main() -> anyhow::Result<()> {
             init_tracing();
             argv.remove(0);
             return install(argv);
+        }
+        Some("user") => {
+            argv.remove(0);
+            return users::run(argv);
         }
         Some("--setup") => {
             init_tracing();
@@ -241,7 +275,7 @@ fn gui_install() -> anyhow::Result<()> {
             return dialog::note(dialog::need_account());
         }
         dialog::note(dialog::admin_coming())?;
-        service::install_waiting(&["--user".into(), user], &pass)?;
+        service::install_waiting(&["--user".into(), user.clone()], &user, &pass)?;
     }
     handoff_setup()
 }
@@ -331,11 +365,10 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
                 .then(|| Box::new(clipboard::MacClipboardFactory::default()) as Box<_>),
         )
         .build();
-    server.set_credentials(Some(Credentials {
-        username: args.user,
-        password: args.pass,
-        domain: None,
-    }));
+    let accounts_path = users::path()?;
+    let accounts = accounts(&accounts_path, args.user.as_deref(), args.pass.as_deref())?;
+    server.set_credential_list(users::credentials(&accounts));
+    users::watch(accounts_path, server.event_sender().clone());
 
     info!(bind = %args.bind, hybrid = args.hybrid, "listening");
     let update = args.update;

@@ -62,7 +62,7 @@ From a terminal, the same install is:
 
 That command asks for the administrator password with `sudo`.
 
-This copies the server into `~/Applications/OpenRDP.app` and installs the LaunchAgent `com.openrdp.server`. The server starts when you log in and restarts if it crashes. The password is stored in `~/Library/LaunchAgents/com.openrdp.server.plist` with mode 600, and the log goes to `~/Library/Logs/openrdp.log`. In this mode the permissions are granted to "OpenRDP" rather than to a terminal. The graphical install opens the right windows itself. From a terminal they still have to be granted at the Mac, and the server restarted afterwards:
+This copies the server into `~/Applications/OpenRDP.app` and installs the LaunchAgent `com.openrdp.server`. The server starts when you log in and restarts if it crashes. The log goes to `~/Library/Logs/openrdp.log`. In this mode the permissions are granted to "OpenRDP" rather than to a terminal. The graphical install opens the right windows itself. From a terminal they still have to be granted at the Mac, and the server restarted afterwards:
 
 ```bash
 launchctl kickstart -k gui/$(id -u)/com.openrdp.server
@@ -75,6 +75,19 @@ After updating the build, run `install` again. It signs the app with a local cer
 While the server is running it checks GitHub for a newer release. A dialog asks before installing; the connection drops for a moment while the new build replaces the app and the agent restarts. `--update auto` installs without asking, `--update off` does not check. "Later" asks again the next day.
 
 `install` also installs a LaunchDaemon, `com.openrdp.broker`, and a login-window LaunchAgent, `com.openrdp.loginwindow`, and asks for an administrator password once. While the Mac shows the login window, launchd starts this same server inside that window's session. It runs as root there, as every login-window agent does, and the Screen Recording and Accessibility grants already given to OpenRDP apply. The stream is the physical display at its current size. Keys typed in the RDP client go to the login window, including the Mac password. After a successful login that process exits and the per-user LaunchAgent takes over; the client connects again. Logging out returns the server to the login window.
+
+### RDP accounts
+
+The accounts are the server's own, not macOS accounts, and there can be several: each person signs in with their own name and password and gets the same desktop, the one on the Mac's screen. A new sign-in takes over from the open session. They live in `~/Library/Application Support/openrdp/users`, mode 600, which the login-window server reads too. `install --user` adds its account there or sets its password; the rest is `openrdp user`:
+
+```bash
+openrdp user list
+openrdp user set sergey        # asks for the password; or --pass / OPENRDP_PASSWORD
+openrdp user rename ivan vanya
+openrdp user remove sergey
+```
+
+Changes apply from the next connection, without a restart; an open session keeps running. The last account cannot be removed. NLA needs the password itself to check it, so the file keeps it in the clear and its mode is what protects it. An older install copies its password from the agent plist into this file on its first start; the next `install` drops it from the plist.
 
 The FileVault screen before macOS has booted is still out of reach. RDP starts once the disk is unlocked and the login window is up. Until then, Screen Sharing can log you in: `ssh -N -L 5901:127.0.0.1:5900 you@mac` and then `vnc://127.0.0.1:5901`.
 

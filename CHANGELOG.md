@@ -6,9 +6,15 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Several RDP accounts, and `openrdp user list|set|remove|rename` to manage them without reinstalling. They live in `~/Library/Application Support/openrdp/users` (mode 600), shared by the user agent and the login-window server, and changes apply from the next connection without a restart. NLA checks each client against the account with its name: IronRDP comes from the `org-event/IronRDP` fork until upstream takes the change.
+
 - `--avc444`: AVC444 for clients that take it, as Windows servers send: each frame goes out as two 4:2:0 views, each its own H.264 stream, and the client rebuilds full-resolution colour, so text and coloured edges no longer smear. Off by default: Windows App for Mac drops the connection on it.
 - The keyboard layout switches over RDP. macOS ignores its input-source shortcuts for injected keys, so the server reads them from the user's settings (Keyboard Shortcuts, Input Sources) and selects the previous or next layout itself when the client sends one.
 - The log shows the first remote key and click, and whether macOS lets the server post events.
+
+### Changed
+
+- `install` no longer writes the password into the agent plist. An older agent copies it into the account file on its first start.
 
 ### Fixed
 

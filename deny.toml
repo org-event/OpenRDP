@@ -44,4 +44,4 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # IronRDP is pinned to a revision with the server-side EGFX we need.
-allow-git = ["https://github.com/Devolutions/IronRDP.git"]
+allow-git = ["https://github.com/org-event/IronRDP.git"]
