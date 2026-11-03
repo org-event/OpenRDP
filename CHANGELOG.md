@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Client drives: folders the client redirects (FreeRDP `/drive:name,path`) are mounted at `~/RDP Drives/<name>` while it is connected, through a WebDAV server on 127.0.0.1 and `mount_webdav`. Read, write, list, rename, delete and new folders go to the client over RDPDR. `--no-drives` turns it off. The IronRDP fork now sends the Server User Logged On PDU, without which clients never announce their drives.
 - Files through the clipboard, both ways. Files copied in Finder are offered to the client and read from disk as it pastes. Files copied on the client are downloaded into `~/Library/Caches/OpenRDP/Clipboard` and put on the pasteboard for Finder. Copies over 16 GB are refused, and names that would leave the download folder are dropped.
 - Curtain: the Mac's own displays go dark while a client is connected, when the client asks for it with `curtain` as its alternate shell (FreeRDP `/shell:curtain`). The server sets their gamma to black, so the capture is unaffected. Brightness returns when the client leaves or the server stops, crashes included. `--curtain always|never` overrides the client. IronRDP (fork) now passes the client's alternate shell and working directory to the server.
 - Sound: what the Mac plays goes to the client over `rdpsnd`, as 16-bit PCM at 48 or 44.1 kHz, captured by ScreenCaptureKit without the server's own sound. `--no-sound` turns it off. Closes #4.

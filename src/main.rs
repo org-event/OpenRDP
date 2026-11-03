@@ -9,6 +9,7 @@ mod cursor;
 mod curtain;
 mod dialog;
 mod display;
+mod drives;
 mod encoder;
 mod input;
 mod input_source;
@@ -76,6 +77,7 @@ OPTIONS:
                       `curtain`, e.g. FreeRDP /shell:curtain), always, or
                       never. The keyboard and mouse there still work
                       [default: client]
+  --no-drives         do not mount the drives the client redirects
   --no-sound          do not play the Mac's sound on the client
   --no-clipboard      do not share the clipboard (Universal Clipboard between
                       Macs on one Apple ID fights with it)
@@ -109,6 +111,7 @@ struct Args {
     test_pattern: bool,
     clipboard: bool,
     sound: bool,
+    drives: bool,
     curtain: curtain::Policy,
     cert: Option<std::path::PathBuf>,
     key: Option<std::path::PathBuf>,
@@ -167,6 +170,7 @@ fn parse_args(args: Vec<std::ffi::OsString>) -> anyhow::Result<Option<Args>> {
         test_pattern: args.contains("--test-pattern"),
         clipboard: !args.contains("--no-clipboard"),
         sound: !args.contains("--no-sound"),
+        drives: !args.contains("--no-drives"),
         curtain: args
             .opt_value_from_str("--curtain")?
             .unwrap_or(curtain::Policy::Client),
@@ -348,6 +352,7 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
         args.fixed_size = true;
         args.clipboard = false;
         args.sound = false;
+        args.drives = false;
         args.curtain = curtain::Policy::Never;
         args.update = update::Mode::Off;
         info!("login window");
@@ -402,6 +407,10 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
                 .then(|| Box::new(clipboard::MacClipboardFactory::default()) as Box<_>),
         )
         .with_connection_handler(Some(Box::new(curtain::ClientRequest(curtain_asked))))
+        .with_rdpdr_factory(
+            args.drives
+                .then(|| Box::new(drives::DriveFactory::default()) as Box<_>),
+        )
         .with_sound_factory(
             args.sound
                 .then(|| Box::new(sound::MacSoundFactory::default()) as Box<_>),
