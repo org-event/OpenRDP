@@ -1,11 +1,12 @@
-//! Clipboard sharing (CLIPRDR): text and images both ways.
+//! Clipboard sharing (CLIPRDR): text, images and files both ways.
 //!
 //! The Mac side is the general pasteboard, polled for changes since macOS has no
 //! change notification. A copy on the Mac announces its formats to the client,
 //! which fetches the data when it pastes. A copy on the client is fetched right
-//! away and written to the pasteboard, so any Mac app can paste it.
+//! away and written to the pasteboard, so any Mac app can paste it. Files go
+//! through `clipboard_files`.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -14,8 +15,8 @@ use std::time::Duration;
 use ironrdp_cliprdr::backend::{ClipboardMessage, CliprdrBackend, CliprdrBackendFactory};
 use ironrdp_cliprdr::pdu::{
     ClipboardFormat, ClipboardFormatId, ClipboardFormatName, ClipboardGeneralCapabilityFlags,
-    FileContentsRequest, FileContentsResponse, FormatDataRequest, FormatDataResponse, LockDataId,
-    OwnedFormatDataResponse,
+    FileContentsRequest, FileContentsResponse, FileDescriptor, FormatDataRequest,
+    FormatDataResponse, LockDataId, OwnedFormatDataResponse,
 };
 use ironrdp_server::{CliprdrServerFactory, ServerEvent, ServerEventSender};
 use objc2::rc::autoreleasepool;
@@ -27,10 +28,13 @@ use objc2_foundation::{NSData, NSDictionary, NSString};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, info, warn};
 
+use crate::clipboard_files::{self, Download, LocalFile, Step};
+
 const POLL: Duration = Duration::from_millis(300);
 /// Our id for the registered "PNG" format; registered ids start at 0xC000.
 const PNG_FORMAT: ClipboardFormatId = ClipboardFormatId(0xC0A0);
 const PNG_NAME: &str = "PNG";
+const FILE_LIST_NAME: &str = "FileGroupDescriptorW";
 
 #[derive(Default)]
 pub struct MacClipboardFactory {
@@ -71,6 +75,10 @@ struct Shared {
     /// Pasteboard change count of our own last write, not to be announced back.
     own_change: Mutex<isize>,
     stop: AtomicBool,
+    /// The Mac files offered to the client, by their index in the list.
+    offered: Mutex<Arc<Vec<LocalFile>>>,
+    /// Lists the client locked, so its requests use the copy it saw.
+    locked: Mutex<HashMap<u32, Arc<Vec<LocalFile>>>>,
 }
 
 impl Shared {
@@ -82,6 +90,20 @@ impl Shared {
 
     /// Tells the client what the pasteboard holds now.
     fn announce(&self) {
+        let paths = autoreleasepool(|_| {
+            clipboard_files::pasteboard_files(&NSPasteboard::generalPasteboard())
+        });
+        if !paths.is_empty() {
+            let files = clipboard_files::collect(&paths);
+            if !files.is_empty() {
+                let descriptors: Vec<FileDescriptor> =
+                    files.iter().map(|f| f.descriptor().clone()).collect();
+                info!(files = files.len(), "offering the Mac's copied files");
+                *self.offered.lock().expect("poisoned") = Arc::new(files);
+                self.send(ClipboardMessage::SendInitiateFileCopy(descriptors));
+                return;
+            }
+        }
         let formats = autoreleasepool(|_| local_formats());
         debug!(?formats, "announcing the Mac clipboard");
         self.send(ClipboardMessage::SendInitiateCopy(formats));
@@ -105,6 +127,9 @@ pub struct MacClipboard {
     shared: Arc<Shared>,
     watcher: Option<JoinHandle<()>>,
     incoming: Incoming,
+    download: Option<Download>,
+    /// Stream ids of file requests, unique across downloads.
+    stream: u32,
 }
 
 impl core::fmt::Debug for MacClipboard {
@@ -130,9 +155,13 @@ impl MacClipboard {
                 sender,
                 own_change: Mutex::new(-1),
                 stop: AtomicBool::new(false),
+                offered: Mutex::default(),
+                locked: Mutex::default(),
             }),
             watcher: None,
             incoming: Incoming::default(),
+            download: None,
+            stream: 0,
         }
     }
 
@@ -168,6 +197,29 @@ impl MacClipboard {
     }
 }
 
+impl MacClipboard {
+    fn follow(&mut self, step: Step) {
+        match step {
+            Step::Request(request) => {
+                self.shared
+                    .send(ClipboardMessage::SendFileContentsRequest(request));
+            }
+            Step::Done(paths) => {
+                if let Some(download) = self.download.take() {
+                    self.stream = download.stream();
+                }
+                let change = autoreleasepool(|_| clipboard_files::write_pasteboard(&paths));
+                *self.shared.own_change.lock().expect("poisoned") = change;
+            }
+            Step::Failed => {
+                if let Some(download) = self.download.take() {
+                    self.stream = download.stream();
+                }
+            }
+        }
+    }
+}
+
 impl Drop for MacClipboard {
     fn drop(&mut self) {
         self.shared.stop.store(true, Ordering::Release);
@@ -184,6 +236,9 @@ impl CliprdrBackend for MacClipboard {
 
     fn client_capabilities(&self) -> ClipboardGeneralCapabilityFlags {
         ClipboardGeneralCapabilityFlags::USE_LONG_FORMAT_NAMES
+            | ClipboardGeneralCapabilityFlags::STREAM_FILECLIP_ENABLED
+            | ClipboardGeneralCapabilityFlags::FILECLIP_NO_FILE_PATHS
+            | ClipboardGeneralCapabilityFlags::CAN_LOCK_CLIPDATA
     }
 
     fn on_ready(&mut self) {
@@ -210,6 +265,17 @@ impl CliprdrBackend for MacClipboard {
                 .find(|f| wanted(f))
                 .map(ClipboardFormat::id)
         };
+        // A new copy replaces one still being fetched.
+        self.download = None;
+        if let Some(id) = find(&|f| {
+            f.name()
+                .is_some_and(|n| n.value().eq_ignore_ascii_case(FILE_LIST_NAME))
+        }) {
+            // The file list comes back through `on_remote_file_list`.
+            self.incoming = Incoming::default();
+            self.shared.send(ClipboardMessage::SendInitiatePaste(id));
+            return;
+        }
         let mut queue = VecDeque::new();
         if let Some(id) = find(&|f| f.id() == ClipboardFormatId::CF_UNICODETEXT) {
             queue.push_back((Fetch::Text, id));
@@ -283,13 +349,62 @@ impl CliprdrBackend for MacClipboard {
         self.request_next();
     }
 
-    fn on_file_contents_request(&mut self, _request: FileContentsRequest) {}
+    fn on_file_contents_request(&mut self, request: FileContentsRequest) {
+        let files = match request.data_id {
+            Some(id) => self
+                .shared
+                .locked
+                .lock()
+                .expect("poisoned")
+                .get(&id)
+                .cloned(),
+            None => Some(Arc::clone(&self.shared.offered.lock().expect("poisoned"))),
+        };
+        self.shared.in_background(move |shared| {
+            let response = match files {
+                Some(files) => clipboard_files::answer(&files, &request),
+                None => FileContentsResponse::new_error(request.stream_id),
+            };
+            shared.send(ClipboardMessage::SendFileContentsResponse(response));
+        });
+    }
 
-    fn on_file_contents_response(&mut self, _response: FileContentsResponse<'_>) {}
+    fn on_file_contents_response(&mut self, response: FileContentsResponse<'_>) {
+        let Some(download) = self.download.as_mut() else {
+            return;
+        };
+        if response.stream_id() != download.stream() {
+            return;
+        }
+        let step = download.receive(&response);
+        self.follow(step);
+    }
 
-    fn on_lock(&mut self, _data_id: LockDataId) {}
+    fn on_lock(&mut self, data_id: LockDataId) {
+        let offered = Arc::clone(&self.shared.offered.lock().expect("poisoned"));
+        self.shared
+            .locked
+            .lock()
+            .expect("poisoned")
+            .insert(data_id.0, offered);
+    }
 
-    fn on_unlock(&mut self, _data_id: LockDataId) {}
+    fn on_unlock(&mut self, data_id: LockDataId) {
+        self.shared
+            .locked
+            .lock()
+            .expect("poisoned")
+            .remove(&data_id.0);
+    }
+
+    fn on_remote_file_list(&mut self, files: &[FileDescriptor], clip_data_id: Option<u32>) {
+        self.download = clipboard_files::download_base()
+            .and_then(|base| Download::start(&base, files, clip_data_id, self.stream));
+        if let Some(download) = self.download.as_mut() {
+            let step = download.advance();
+            self.follow(step);
+        }
+    }
 }
 
 /// Announces every pasteboard change that is not our own write.
