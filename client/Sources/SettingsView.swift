@@ -7,6 +7,9 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("FreeRDP") {
+                if FreeRDP.bundled != nil {
+                    Toggle("Встроенный FreeRDP", isOn: $model.preferBundled)
+                }
                 LabeledContent("sdl-freerdp") {
                     if let binary = model.binary {
                         Text(binary.path + (model.version.map { "  (\($0))" } ?? ""))
@@ -15,10 +18,12 @@ struct SettingsView: View {
                         Text("не найден").foregroundStyle(.red)
                     }
                 }
-                HStack {
-                    TextField("Свой путь", text: $model.customBinaryPath,
-                              prompt: Text(FreeRDP.candidates.joined(separator: " или ")))
-                    Button("Выбрать…", action: choose)
+                if !model.isBundled {
+                    HStack {
+                        TextField("Свой путь", text: $model.customBinaryPath,
+                                  prompt: Text(FreeRDP.candidates.joined(separator: " или ")))
+                        Button("Выбрать…", action: choose)
+                    }
                 }
             }
 
