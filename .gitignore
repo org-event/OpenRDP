@@ -2,3 +2,4 @@
 /target/
 /build/
 .DS_Store
+/client/build/
