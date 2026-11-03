@@ -64,8 +64,8 @@ pub struct DisplayConfig {
     pub hidpi: bool,
     /// Stream a virtual display sized to the client instead of the main display.
     pub match_client: bool,
-    /// Darken the Mac's own displays while a client is connected.
-    pub curtain: bool,
+    /// When to darken the Mac's own displays while a client is connected.
+    pub curtain: crate::curtain::Policy,
     /// Largest virtual display, in pixels.
     pub max_pixels: u32,
     /// How long the virtual display outlives a disconnect, so a client that
@@ -179,6 +179,8 @@ pub struct Shared {
     session_epoch: AtomicU64,
     /// The client of this connection opened FreeRDP's advanced input channel.
     advanced_input: Arc<AtomicBool>,
+    /// The client of this connection asked for the curtain.
+    curtain_asked: Arc<AtomicBool>,
 }
 
 /// Time from sending a frame to its acknowledgement, for the stats log.
@@ -236,9 +238,14 @@ impl AckStats {
 }
 
 impl Shared {
-    pub fn new(screen: Arc<ScreenState>, advanced_input: Arc<AtomicBool>) -> Self {
+    pub fn new(
+        screen: Arc<ScreenState>,
+        advanced_input: Arc<AtomicBool>,
+        curtain_asked: Arc<AtomicBool>,
+    ) -> Self {
         Self {
             advanced_input,
+            curtain_asked,
             events: Mutex::new(None),
             slot: Arc::default(),
             screen,
@@ -519,7 +526,12 @@ impl Session {
         shared.sessions.fetch_add(1, Ordering::AcqRel);
         shared.session_epoch.fetch_add(1, Ordering::AcqRel);
         info!(?config, screen = ?shared.screen.get(), "display session started");
-        let curtain = config.curtain.then(|| {
+        let curtain = match config.curtain {
+            crate::curtain::Policy::Always => true,
+            crate::curtain::Policy::Client => shared.curtain_asked.load(Ordering::Acquire),
+            crate::curtain::Policy::Never => false,
+        };
+        let curtain = curtain.then(|| {
             let shared = Arc::clone(&shared);
             crate::curtain::Curtain::draw(move || {
                 shared
