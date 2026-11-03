@@ -17,7 +17,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 work="$here/build/deps"
 src="$work/src"
 out="$here/build/freerdp"
-archs=(${ARCHS:-arm64 x86_64})
+read -r -a archs <<< "${ARCHS:-arm64 x86_64}"
 export MACOSX_DEPLOYMENT_TARGET=13.0
 jobs=$(sysctl -n hw.ncpu)
 
@@ -37,7 +37,8 @@ mkdir -p "$src" "$work/stamps" "$work/logs"
 
 # fetch <name> <version> <url> <sha256>: download once, check, unpack fresh into $work/<name>-<arch>.
 fetch() {
-    local name=$1 url=$3 sha=$4 file="$src/$(basename "$3")"
+    local url=$3 sha=$4 file
+    file="$src/$(basename "$3")"
     [[ "$file" == */3.32.2.tar.gz ]] && file="$src/FreeRDP-3.32.2.tar.gz"
     if [[ ! -f "$file" ]]; then
         echo "  download $url"
@@ -52,10 +53,14 @@ unpack() { # unpack <archive> <dir>
     tar -xf "$1" -C "$2" --strip-components 1
 }
 
+# built <name> <arch>: whether that step is done (its stamp exists, from this
+# run or from a cache), so its sources need not be downloaded.
+built() { [[ -f "$work/stamps/$1-$2" ]]; }
+
 # step <name> <arch> <function>: runs the function once per arch, logging to build/deps/logs.
 step() {
     local name=$1 arch=$2 fn=$3 stamp="$work/stamps/$1-$2"
-    [[ -f "$stamp" ]] && return
+    built "$name" "$arch" && return
     echo "== $name $arch"
     if ! "$fn" "$arch" > "$work/logs/$name-$arch.log" 2>&1; then
         echo "failed, last lines of $work/logs/$name-$arch.log:" >&2
@@ -160,13 +165,20 @@ build_freerdp() {
 }
 
 for arch in "${archs[@]}"; do
-    fetch openssl "${OPENSSL[@]}";   step openssl "$arch" build_openssl
-    fetch ffmpeg "${FFMPEG[@]}";     step ffmpeg "$arch" build_ffmpeg
-    fetch jansson "${JANSSON[@]}";   step jansson "$arch" build_jansson
-    fetch freetype "${FREETYPE[@]}"; step freetype "$arch" build_freetype
-    fetch sdl3 "${SDL3[@]}";         step sdl3 "$arch" build_sdl3
-    fetch sdl3_ttf "${SDL3_TTF[@]}"; step sdl3_ttf "$arch" build_sdl3_ttf
-    fetch freerdp "${FREERDP[@]}";   step freerdp "$arch" build_freerdp
+    built openssl "$arch" || fetch openssl "${OPENSSL[@]}"
+    step openssl "$arch" build_openssl
+    built ffmpeg "$arch" || fetch ffmpeg "${FFMPEG[@]}"
+    step ffmpeg "$arch" build_ffmpeg
+    built jansson "$arch" || fetch jansson "${JANSSON[@]}"
+    step jansson "$arch" build_jansson
+    built freetype "$arch" || fetch freetype "${FREETYPE[@]}"
+    step freetype "$arch" build_freetype
+    built sdl3 "$arch" || fetch sdl3 "${SDL3[@]}"
+    step sdl3 "$arch" build_sdl3
+    built sdl3_ttf "$arch" || fetch sdl3_ttf "${SDL3_TTF[@]}"
+    step sdl3_ttf "$arch" build_sdl3_ttf
+    built freerdp "$arch" || fetch freerdp "${FREERDP[@]}"
+    step freerdp "$arch" build_freerdp
 done
 
 # Universal binaries: sdl-freerdp and the dylibs it loads, found by walking its
@@ -182,12 +194,17 @@ lipo_all() { # lipo_all <relative path> <output>
 lipo_all bin/sdl-freerdp "$out/bin/sdl-freerdp"
 
 deps_of() { otool -L "$1" | grep $'^\t' | awk '{print $1}' | grep '^@rpath/' | sed 's|^@rpath/||'; }
-queue=($(deps_of "$out/bin/sdl-freerdp"))
+queue=()
+queue_deps() { # queue_deps <file>: append its @rpath dependencies to the queue
+    local dep
+    while IFS= read -r dep; do queue+=("$dep"); done < <(deps_of "$1")
+}
+queue_deps "$out/bin/sdl-freerdp"
 while ((${#queue[@]})); do
     lib=${queue[0]}; queue=("${queue[@]:1}")
     [[ -f "$out/lib/$lib" ]] && continue
     lipo_all "lib/$lib" "$out/lib/$lib"
-    queue+=($(deps_of "$out/lib/$lib"))
+    queue_deps "$out/lib/$lib"
 done
 
 # Every load command must point into the app or the system.

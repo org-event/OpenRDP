@@ -19,7 +19,10 @@ version="${VERSION:-0.1.0}"
 min_macos=13.0
 # The macOS 27 SDK turns @State into a macro whose plugin ships only with Xcode;
 # the 26 SDK, also part of the Command Line Tools, still has the property wrapper.
-sdk="${SDKROOT:-$(ls -d /Library/Developer/CommandLineTools/SDKs/MacOSX26*.sdk 2>/dev/null | head -1)}"
+sdk="${SDKROOT:-}"
+for candidate in /Library/Developer/CommandLineTools/SDKs/MacOSX26*.sdk; do
+    if [[ -z "$sdk" && -d "$candidate" ]]; then sdk="$candidate"; fi
+done
 sdk="${sdk:-$(xcrun --show-sdk-path)}"
 
 rm -rf "$app" "$out/obj"

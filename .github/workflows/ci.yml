@@ -63,6 +63,39 @@ jobs:
           path: target/release/openrdp
           retention-days: 14
 
+  client:
+    name: client app (arm64 + x86_64)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build tools
+        run: brew install cmake ninja nasm pkgconf
+      # FreeRDP and its libraries take about half an hour for both architectures.
+      # The script pins every version and checksum, so its hash is the key, and
+      # the stamps let it skip whatever the cache brought back.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            client/build/deps/prefix-arm64
+            client/build/deps/prefix-x86_64
+            client/build/deps/stamps
+          key: client-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('client/build-freerdp.sh') }}
+      - name: Build FreeRDP
+        run: client/build-freerdp.sh
+      - name: Build the app
+        run: client/build.sh --dmg
+      - name: Check the app
+        run: client/check-app.sh --bundled
+      - name: Smoke test
+        run: '"client/build/OpenRDP Client.app/Contents/MacOS/sdl-freerdp" /version'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openrdp-client-universal
+          path: client/build/OpenRDP-Client-*.dmg
+          retention-days: 14
+
   deny:
     name: licenses and advisories
     runs-on: ubuntu-latest
@@ -80,4 +113,4 @@ jobs:
         with:
           persist-credentials: false
       - name: ShellCheck
-        run: shellcheck scripts/openrdp-doctor scripts/make-dmg.sh
+        run: shellcheck scripts/openrdp-doctor scripts/make-dmg.sh client/build.sh client/build-freerdp.sh client/check-app.sh

@@ -37,6 +37,25 @@ jobs:
           scripts/make-dmg.sh target/release/openrdp "${GITHUB_REF_NAME#v}" "$name.dmg"
           shasum -a 256 "$name.dmg" > "$name.dmg.sha256"
           echo "ASSET=$name" >> "$GITHUB_ENV"
+      - name: Client build tools
+        run: brew install cmake ninja nasm pkgconf
+      # Restore only: CI on main fills this cache, and a tag run need not write to it.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            client/build/deps/prefix-arm64
+            client/build/deps/prefix-x86_64
+            client/build/deps/stamps
+          key: client-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('client/build-freerdp.sh') }}
+      - name: Client
+        run: |
+          client/build-freerdp.sh
+          VERSION="${GITHUB_REF_NAME#v}" client/build.sh --dmg
+          client/check-app.sh --bundled
+          name="openrdp-client-$GITHUB_REF_NAME-universal"
+          mv "client/build/OpenRDP-Client-${GITHUB_REF_NAME#v}.dmg" "$name.dmg"
+          shasum -a 256 "$name.dmg" > "$name.dmg.sha256"
+          echo "CLIENT_ASSET=$name" >> "$GITHUB_ENV"
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -47,9 +66,13 @@ jobs:
           The first launch asks for the RDP name and password, then for an administrator password, so a restart still reaches the login window.
           A running server asks before installing a newer release.
 
+          OpenRDP Client (openrdp-client-…-universal.dmg) connects to OpenRDP servers from Apple Silicon and Intel Macs, with FreeRDP inside.
+          Drag it to Applications, then run `xattr -dr com.apple.quarantine "/Applications/OpenRDP Client.app"`, since it is not notarized either.
+
           See CHANGELOG.md for the changes.
           EOF
           gh release create "$GITHUB_REF_NAME" \
             "$ASSET.dmg" "$ASSET.dmg.sha256" \
+            "$CLIENT_ASSET.dmg" "$CLIENT_ASSET.dmg.sha256" \
             "$ASSET.tar.gz" "$ASSET.tar.gz.sha256" \
             --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
