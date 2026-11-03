@@ -69,8 +69,12 @@ OPTIONS:
                       stay put for a reconnect; 0 removes it at once
                       [default: 300]
   --hidpi             with --fixed-size: stream in pixels instead of points
-  --curtain           darken the Mac's own displays while a client is
-                      connected; the keyboard and mouse there still work
+  --curtain <client|always|never>
+                      darken the Mac's own displays while a client is
+                      connected: when the client asks (its alternate shell is
+                      `curtain`, e.g. FreeRDP /shell:curtain), always, or
+                      never. The keyboard and mouse there still work
+                      [default: client]
   --no-sound          do not play the Mac's sound on the client
   --no-clipboard      do not share the clipboard (Universal Clipboard between
                       Macs on one Apple ID fights with it)
@@ -104,7 +108,7 @@ struct Args {
     test_pattern: bool,
     clipboard: bool,
     sound: bool,
-    curtain: bool,
+    curtain: curtain::Policy,
     cert: Option<std::path::PathBuf>,
     key: Option<std::path::PathBuf>,
     update: update::Mode,
@@ -162,7 +166,9 @@ fn parse_args(args: Vec<std::ffi::OsString>) -> anyhow::Result<Option<Args>> {
         test_pattern: args.contains("--test-pattern"),
         clipboard: !args.contains("--no-clipboard"),
         sound: !args.contains("--no-sound"),
-        curtain: args.contains("--curtain"),
+        curtain: args
+            .opt_value_from_str("--curtain")?
+            .unwrap_or(curtain::Policy::Client),
         cert: args.opt_value_from_str("--cert")?,
         key: args.opt_value_from_str("--key")?,
         update: {
@@ -341,7 +347,7 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
         args.fixed_size = true;
         args.clipboard = false;
         args.sound = false;
-        args.curtain = false;
+        args.curtain = curtain::Policy::Never;
         args.update = update::Mode::Off;
         info!("login window");
     }
@@ -373,9 +379,11 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
 
     let screen = Arc::new(ScreenState::new(screen));
     let advanced_input = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let curtain_asked = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let shared = Arc::new(Shared::new(
         Arc::clone(&screen),
         Arc::clone(&advanced_input),
+        Arc::clone(&curtain_asked),
     ));
     let builder = RdpServer::builder().with_addr(args.bind);
     let builder = if args.hybrid {
@@ -392,6 +400,7 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
             args.clipboard
                 .then(|| Box::new(clipboard::MacClipboardFactory::default()) as Box<_>),
         )
+        .with_connection_handler(Some(Box::new(curtain::ClientRequest(curtain_asked))))
         .with_sound_factory(
             args.sound
                 .then(|| Box::new(sound::MacSoundFactory::default()) as Box<_>),
