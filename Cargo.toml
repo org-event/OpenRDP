@@ -21,18 +21,18 @@ dispatch2 = "0.3.1"
 futures-util = { version = "0.3.31", default-features = false, features = ["alloc"] }
 hyper = { version = "1.7.0", features = ["server", "http1"] }
 hyper-util = { version = "0.1.17", features = ["tokio"] }
-ironrdp-cliprdr = { git = "https://github.com/org-event/IronRDP.git", rev = "4b788d12823671d21d71e34b4b97c8eecc3fdebd", version = "0.9.0" }
-ironrdp-cliprdr-format = { git = "https://github.com/org-event/IronRDP.git", rev = "4b788d12823671d21d71e34b4b97c8eecc3fdebd", version = "0.3.0" }
-ironrdp-displaycontrol = { git = "https://github.com/org-event/IronRDP.git", rev = "4b788d12823671d21d71e34b4b97c8eecc3fdebd", version = "0.10.0" }
-ironrdp-dvc = { git = "https://github.com/org-event/IronRDP.git", rev = "4b788d12823671d21d71e34b4b97c8eecc3fdebd", version = "0.10.0" }
-ironrdp-egfx = { git = "https://github.com/org-event/IronRDP.git", rev = "4b788d12823671d21d71e34b4b97c8eecc3fdebd", version = "0.5.0" }
-ironrdp-pdu = { git = "https://github.com/org-event/IronRDP.git", rev = "4b788d12823671d21d71e34b4b97c8eecc3fdebd", version = "0.11.0" }
+ironrdp-cliprdr = { git = "https://github.com/org-event/IronRDP.git", rev = "58492e53ea815a222e4955d03331ca8c1c0bef53", version = "0.9.0" }
+ironrdp-cliprdr-format = { git = "https://github.com/org-event/IronRDP.git", rev = "58492e53ea815a222e4955d03331ca8c1c0bef53", version = "0.3.0" }
+ironrdp-displaycontrol = { git = "https://github.com/org-event/IronRDP.git", rev = "58492e53ea815a222e4955d03331ca8c1c0bef53", version = "0.10.0" }
+ironrdp-dvc = { git = "https://github.com/org-event/IronRDP.git", rev = "58492e53ea815a222e4955d03331ca8c1c0bef53", version = "0.10.0" }
+ironrdp-egfx = { git = "https://github.com/org-event/IronRDP.git", rev = "58492e53ea815a222e4955d03331ca8c1c0bef53", version = "0.5.0" }
+ironrdp-pdu = { git = "https://github.com/org-event/IronRDP.git", rev = "58492e53ea815a222e4955d03331ca8c1c0bef53", version = "0.11.0" }
 # default includes qoiz, which links zstd-safe decompression. The server encodes
 # with VideoToolbox and never decompresses zstd, so that code stays out.
-ironrdp-rdpdr = { git = "https://github.com/org-event/IronRDP.git", rev = "4b788d12823671d21d71e34b4b97c8eecc3fdebd", version = "0.9.0" }
-ironrdp-rdpsnd = { git = "https://github.com/org-event/IronRDP.git", rev = "4b788d12823671d21d71e34b4b97c8eecc3fdebd", version = "0.11.0" }
-ironrdp-server = { git = "https://github.com/org-event/IronRDP.git", rev = "4b788d12823671d21d71e34b4b97c8eecc3fdebd", version = "0.14.0", default-features = false, features = ["egfx", "helper", "rayon"] }
-ironrdp-svc = { git = "https://github.com/org-event/IronRDP.git", rev = "4b788d12823671d21d71e34b4b97c8eecc3fdebd", version = "0.10.0" }
+ironrdp-rdpdr = { git = "https://github.com/org-event/IronRDP.git", rev = "58492e53ea815a222e4955d03331ca8c1c0bef53", version = "0.9.0" }
+ironrdp-rdpsnd = { git = "https://github.com/org-event/IronRDP.git", rev = "58492e53ea815a222e4955d03331ca8c1c0bef53", version = "0.11.0" }
+ironrdp-server = { git = "https://github.com/org-event/IronRDP.git", rev = "58492e53ea815a222e4955d03331ca8c1c0bef53", version = "0.14.0", default-features = false, features = ["egfx", "helper", "rayon"] }
+ironrdp-svc = { git = "https://github.com/org-event/IronRDP.git", rev = "58492e53ea815a222e4955d03331ca8c1c0bef53", version = "0.10.0" }
 objc2 = "0.6.5"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSPasteboard", "NSPasteboardItem", "NSImageRep", "NSBitmapImageRep"] }
 objc2-core-foundation = "0.3.2"
