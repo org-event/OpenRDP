@@ -16,6 +16,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- IronRDP moves to current upstream (59 commits newer), still through the `org-event/IronRDP` fork, which also drops `rustls-pemfile`. The RUSTSEC-2025-0134 ignore goes; RUSTSEC-2023-0071 (`rsa`) stays, as no `rsa` release fixes it. Closes #5.
+
 - `install` no longer writes the password into the agent plist. An older agent copies it into the account file on its first start.
 
 ### Fixed
