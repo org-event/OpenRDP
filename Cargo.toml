@@ -24,6 +24,7 @@ ironrdp-egfx = { git = "https://github.com/org-event/IronRDP.git", rev = "9202f9
 ironrdp-pdu = { git = "https://github.com/org-event/IronRDP.git", rev = "9202f917ae3e0fc61cb13b5a6fc56d08767391dc", version = "0.11.0" }
 # default includes qoiz, which links zstd-safe decompression. The server encodes
 # with VideoToolbox and never decompresses zstd, so that code stays out.
+ironrdp-rdpsnd = { git = "https://github.com/org-event/IronRDP.git", rev = "9202f917ae3e0fc61cb13b5a6fc56d08767391dc", version = "0.11.0" }
 ironrdp-server = { git = "https://github.com/org-event/IronRDP.git", rev = "9202f917ae3e0fc61cb13b5a6fc56d08767391dc", version = "0.14.0", default-features = false, features = ["egfx", "helper", "rayon"] }
 ironrdp-svc = { git = "https://github.com/org-event/IronRDP.git", rev = "9202f917ae3e0fc61cb13b5a6fc56d08767391dc", version = "0.10.0" }
 objc2 = "0.6.5"

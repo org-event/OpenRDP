@@ -2200,6 +2200,7 @@ dependencies = [
  "ironrdp-dvc",
  "ironrdp-egfx",
  "ironrdp-pdu",
+ "ironrdp-rdpsnd",
  "ironrdp-server",
  "ironrdp-svc",
  "objc2",

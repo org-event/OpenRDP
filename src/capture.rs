@@ -245,7 +245,7 @@ impl Drop for Capture {
     }
 }
 
-fn find_display(display_id: u32) -> anyhow::Result<Retained<SCDisplay>> {
+pub(crate) fn find_display(display_id: u32) -> anyhow::Result<Retained<SCDisplay>> {
     // A display created a moment ago (the virtual one) takes a while to show up.
     for _ in 0..15 {
         if let Some(display) = shareable_display(display_id)? {
