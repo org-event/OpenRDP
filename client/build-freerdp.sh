@@ -98,7 +98,8 @@ build_ffmpeg() {
     unpack "$src/$(basename "${FFMPEG[1]}")" "$dir"
     cd "$dir"
     [[ "$arch" != "$(uname -m)" ]] && cross=(--enable-cross-compile)
-    ./configure --prefix="$work/prefix-$arch" --arch="$arch" --target-os=darwin "${cross[@]}" \
+    # ${cross[@]+...}: macOS bash 3.2 treats an empty array as unset under set -u.
+    ./configure --prefix="$work/prefix-$arch" --arch="$arch" --target-os=darwin ${cross[@]+"${cross[@]}"} \
         --cc="clang -arch $arch" --cxx="clang++ -arch $arch" \
         --extra-cflags="-mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET" \
         --extra-ldflags="-mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET" \
@@ -122,7 +123,8 @@ build_freetype() {
     local dir="$work/freetype-$1"
     unpack "$src/$(basename "${FREETYPE[1]}")" "$dir"
     cmake_build "$1" "$dir" -DBUILD_SHARED_LIBS=OFF -DFT_DISABLE_ZLIB=ON -DFT_DISABLE_BZIP2=ON \
-        -DFT_DISABLE_PNG=ON -DFT_DISABLE_HARFBUZZ=ON -DFT_DISABLE_BROTLI=ON
+        -DFT_DISABLE_PNG=ON -DFT_DISABLE_HARFBUZZ=ON -DFT_DISABLE_BROTLI=ON \
+        -DFT_DISABLE_HVF=ON # Apple's libhvf from the macOS 27 SDK, missing on older systems
 }
 
 build_sdl3() {
@@ -149,7 +151,7 @@ build_freerdp() {
         -DWITH_SDL_LINK_SHARED=ON -DWITH_CLIENT_MAC=OFF -DWITH_X11=OFF -DWITH_WAYLAND=OFF \
         -DWITH_SERVER=OFF -DWITH_SHADOW=OFF -DWITH_PROXY=OFF -DWITH_SAMPLE=OFF -DWITH_MANPAGES=OFF \
         -DWITH_PLATFORM_SERVER=OFF -DWITH_FFMPEG=ON -DWITH_SWSCALE=ON -DWITH_DSP_FFMPEG=OFF \
-        -DWITH_VIDEO_FFMPEG=OFF -DWITH_OPENH264=OFF -DWITH_CUPS=OFF -DWITH_PCSC=OFF -DWITH_KRB5=OFF \
+        -DWITH_VIDEO_FFMPEG=ON -DWITH_OPENH264=OFF -DWITH_CUPS=OFF -DWITH_PCSC=OFF -DWITH_KRB5=OFF \
         -DWITH_FUSE=OFF -DWITH_JPEG=OFF -DWITH_OPUS=OFF -DWITH_LAME=OFF -DWITH_FAAD2=OFF -DWITH_FAAC=OFF \
         -DWITH_SOXR=OFF -DWITH_URIPARSER=OFF -DWITH_WEBVIEW=OFF -DWITH_AAD=OFF -DWITH_FIDO=OFF \
         -DWITH_CAIRO=OFF -DWITH_LIBSYSTEMD=OFF -DWITH_UNICODE_BUILTIN=ON -DWITH_JANSSON_REQUIRED=ON \
@@ -179,7 +181,7 @@ lipo_all() { # lipo_all <relative path> <output>
 }
 lipo_all bin/sdl-freerdp "$out/bin/sdl-freerdp"
 
-deps_of() { otool -L "$1" | tail -n +2 | awk '{print $1}' | grep '^@rpath/' | sed 's|^@rpath/||'; }
+deps_of() { otool -L "$1" | grep $'^\t' | awk '{print $1}' | grep '^@rpath/' | sed 's|^@rpath/||'; }
 queue=($(deps_of "$out/bin/sdl-freerdp"))
 while ((${#queue[@]})); do
     lib=${queue[0]}; queue=("${queue[@]:1}")
@@ -193,7 +195,7 @@ install_name_tool -add_rpath @executable_path/../Frameworks "$out/bin/sdl-freerd
 for f in "$out/bin/sdl-freerdp" "$out"/lib/*.dylib; do
     install_name_tool -delete_rpath "$first/lib" "$f" 2>/dev/null || true
     for arch in "${archs[@]}"; do install_name_tool -delete_rpath "$work/prefix-$arch/lib" "$f" 2>/dev/null || true; done
-    bad=$(otool -L "$f" | tail -n +2 | awk '{print $1}' | grep -v -E '^(@rpath/|/usr/lib/|/System/)' || true)
+    bad=$(otool -L "$f" | grep $'^\t' | awk '{print $1}' | grep -v -E '^(@rpath/|/usr/lib/|/System/)' || true)
     [[ -z "$bad" ]] || { echo "$f links outside the app: $bad" >&2; exit 1; }
 done
 ls -la "$out/bin" "$out/lib"
