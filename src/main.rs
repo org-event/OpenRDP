@@ -15,6 +15,7 @@ mod rate;
 mod service;
 mod setup;
 mod signing;
+mod sound;
 mod tls;
 mod update;
 mod users;
@@ -67,6 +68,7 @@ OPTIONS:
                       stay put for a reconnect; 0 removes it at once
                       [default: 300]
   --hidpi             with --fixed-size: stream in pixels instead of points
+  --no-sound          do not play the Mac's sound on the client
   --no-clipboard      do not share the clipboard (Universal Clipboard between
                       Macs on one Apple ID fights with it)
   --test-pattern      send a synthetic picture instead of the screen
@@ -98,6 +100,7 @@ struct Args {
     hidpi: bool,
     test_pattern: bool,
     clipboard: bool,
+    sound: bool,
     cert: Option<std::path::PathBuf>,
     key: Option<std::path::PathBuf>,
     update: update::Mode,
@@ -154,6 +157,7 @@ fn parse_args(args: Vec<std::ffi::OsString>) -> anyhow::Result<Option<Args>> {
         hidpi: args.contains("--hidpi"),
         test_pattern: args.contains("--test-pattern"),
         clipboard: !args.contains("--no-clipboard"),
+        sound: !args.contains("--no-sound"),
         cert: args.opt_value_from_str("--cert")?,
         key: args.opt_value_from_str("--key")?,
         update: {
@@ -331,6 +335,7 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
     if broker::login_window_requested() {
         args.fixed_size = true;
         args.clipboard = false;
+        args.sound = false;
         args.update = update::Mode::Off;
         info!("login window");
     }
@@ -379,6 +384,10 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
         .with_cliprdr_factory(
             args.clipboard
                 .then(|| Box::new(clipboard::MacClipboardFactory::default()) as Box<_>),
+        )
+        .with_sound_factory(
+            args.sound
+                .then(|| Box::new(sound::MacSoundFactory::default()) as Box<_>),
         )
         .build();
     let accounts_path = users::path()?;
