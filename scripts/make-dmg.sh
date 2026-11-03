@@ -69,6 +69,9 @@ swift "$root/scripts/dmg-background.swift" \
   "$mount/OpenRDP.app/Contents/Resources/background.png" > "$stage/layout"
 # shellcheck disable=SC1091
 source "$stage/layout"
+# Assigned by the layout file, which shellcheck cannot follow.
+: "${width:?}" "${height:?}" "${icon_left:?}" "${icon_right:?}" "${icon_top:?}" \
+  "${text_x:?}" "${text_y:?}"
 # The title bar is outside the icon view. The picture matches the view.
 titlebar=28
 win_right=$((200 + width))
