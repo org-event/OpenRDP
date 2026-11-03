@@ -4,6 +4,7 @@ mod avc444;
 mod broker;
 mod capture;
 mod clipboard;
+mod clipboard_files;
 mod cursor;
 mod curtain;
 mod dialog;
