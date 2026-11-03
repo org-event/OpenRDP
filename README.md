@@ -105,6 +105,24 @@ scripts/openrdp-doctor vpn       # bring up the WireGuard tunnel (needs a logged
 
 On another machine, `openrdp-doctor wol <MAC> [broadcast]` sends a Wake-on-LAN packet to a Mac that is asleep (it needs Wake for network access on the host, `pmset womp 1`).
 
+## Client app: OpenRDP Client
+
+[`client/`](client) holds a small native Mac app (SwiftUI) that connects to OpenRDP servers through FreeRDP's `sdl-freerdp`, so you do not have to type the FreeRDP command by hand. It needs FreeRDP 3 from Homebrew (`brew install freerdp`) and looks for `sdl-freerdp` in `/usr/local/bin` (Intel) and `/opt/homebrew/bin` (Apple Silicon). Another path can be set in Settings. The app says so at once when `sdl-freerdp` is missing.
+
+- **Saved Macs**: name, address, user and options. Passwords are kept in the Keychain. The app passes all options on `sdl-freerdp`'s stdin (`/args-from:stdin`), so the password does not show up in `ps` and is never written to a file.
+- **One-click connect** with `/gfx:avc444 /dynamic-resolution /cert:tofu`, full screen or a window size, and a shared clipboard. `tofu` remembers the server's certificate on the first connection and refuses one that changes later. "Do not check" (`/cert:ignore`) is also available.
+- **FreeRDP shortcuts without right Shift.** FreeRDP's default hotkey modifier is right Shift, which breaks capital П, К, В and Ь in the Russian layout, and right Shift+В disconnects. The app writes `SDL_KeyModMask` to `~/.config/freerdp/sdl-freerdp.json` (`$XDG_CONFIG_HOME/freerdp/` when that is set) and shows the shortcuts. The default is right ⌘ + right ⌥: with them, Enter toggles full screen, G toggles the keyboard grab, R toggles resizing, M minimizes and D disconnects.
+- **⌘Space and other system shortcuts reach the remote Mac.** SDL's keyboard grab would stop the client Mac from taking them, but Homebrew's SDL3 is built without that code (`SDL_MAC_NO_SANDBOX`). The app loads a small library into `sdl-freerdp` (`DYLD_INSERT_LIBRARIES`, [`client/Keyboard/openrdp_keyboard.m`](client/Keyboard/openrdp_keyboard.m)). While FreeRDP grabs the keyboard (the pointer is over the session window) and the session window is active, it turns the client Mac's system shortcuts off, the same way SDL would. The OpenRDP server then gets ⌘Space and switches the layout. The library also clears ⌘Q, ⌘W, ⌘H and ⌘M from SDL's menu, so they go to the remote Mac instead of quitting or hiding the client. This can be turned off in Settings. To get the system shortcuts back to the local Mac during a session, press the modifier + G.
+
+Build a universal (arm64 + x86_64) app with the Command Line Tools alone (Xcode is not needed):
+
+```bash
+client/build.sh          # client/build/OpenRDP Client.app
+client/build.sh --zip    # plus client/build/OpenRDP-Client-<version>.zip to copy to another Mac
+```
+
+The app is signed ad hoc. On another Mac, remove the quarantine after copying it: `xattr -dr com.apple.quarantine "/Applications/OpenRDP Client.app"`. After each new build macOS asks once for access to the saved passwords in the Keychain: choose "Always Allow". Session logs are in `~/Library/Logs/OpenRDP Client/`.
+
 ## Open questions
 
 The roadmap and design notes are in [docs/plan.md](docs/plan.md) (in Russian). Main gaps:
