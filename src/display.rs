@@ -64,6 +64,8 @@ pub struct DisplayConfig {
     pub hidpi: bool,
     /// Stream a virtual display sized to the client instead of the main display.
     pub match_client: bool,
+    /// Darken the Mac's own displays while a client is connected.
+    pub curtain: bool,
     /// Largest virtual display, in pixels.
     pub max_pixels: u32,
     /// How long the virtual display outlives a disconnect, so a client that
@@ -479,6 +481,7 @@ struct Session {
     thread: Option<JoinHandle<()>>,
     cursor_thread: Option<JoinHandle<()>>,
     _display_awake: Option<crate::power::Awake>,
+    _curtain: Option<crate::curtain::Curtain>,
     pointer_updates: UnboundedReceiver<ironrdp_server::DisplayUpdate>,
 }
 
@@ -516,6 +519,17 @@ impl Session {
         shared.sessions.fetch_add(1, Ordering::AcqRel);
         shared.session_epoch.fetch_add(1, Ordering::AcqRel);
         info!(?config, screen = ?shared.screen.get(), "display session started");
+        let curtain = config.curtain.then(|| {
+            let shared = Arc::clone(&shared);
+            crate::curtain::Curtain::draw(move || {
+                shared
+                    .virtual_display
+                    .lock()
+                    .expect("poisoned")
+                    .as_ref()
+                    .map(VirtualDisplay::id)
+            })
+        });
 
         Ok(Self {
             shared,
@@ -525,6 +539,7 @@ impl Session {
             thread: Some(thread),
             cursor_thread: Some(cursor_thread),
             _display_awake: crate::power::Awake::display(),
+            _curtain: curtain,
             pointer_updates,
         })
     }

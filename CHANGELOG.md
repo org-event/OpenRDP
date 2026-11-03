@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- `--curtain`: the Mac's own displays go dark while a client is connected (gamma set to black; the capture is unaffected). Brightness returns when the client leaves or the server stops, crashes included.
 - Sound: what the Mac plays goes to the client over `rdpsnd`, as 16-bit PCM at 48 or 44.1 kHz, captured by ScreenCaptureKit without the server's own sound. `--no-sound` turns it off. Closes #4.
 
 ## [1.4.0] - 2026-11-03
