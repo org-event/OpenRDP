@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
-- `--curtain`: the Mac's own displays go dark while a client is connected (gamma set to black; the capture is unaffected). Brightness returns when the client leaves or the server stops, crashes included.
+- Curtain: the Mac's own displays go dark while a client is connected, when the client asks for it with `curtain` as its alternate shell (FreeRDP `/shell:curtain`). The server sets their gamma to black, so the capture is unaffected. Brightness returns when the client leaves or the server stops, crashes included. `--curtain always|never` overrides the client. IronRDP (fork) now passes the client's alternate shell and working directory to the server.
 - Sound: what the Mac plays goes to the client over `rdpsnd`, as 16-bit PCM at 48 or 44.1 kHz, captured by ScreenCaptureKit without the server's own sound. `--no-sound` turns it off. Closes #4.
 
 ## [1.4.0] - 2026-11-03
