@@ -4,6 +4,11 @@
 #
 #   client/build.sh            build
 #   client/build.sh --zip      also pack build/OpenRDP-Client-<version>.zip to copy to another Mac
+#   client/build.sh --dmg      also make build/OpenRDP-Client-<version>.dmg (app + Applications link)
+#
+# When client/build-freerdp.sh has been run, its sdl-freerdp and libraries go
+# inside the app (Contents/MacOS and Contents/Frameworks) and the app uses them;
+# otherwise the app needs FreeRDP from Homebrew.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -36,17 +41,43 @@ xcrun clang -arch arm64 -arch x86_64 -mmacosx-version-min=$min_macos -O2 -Wall -
     -undefined dynamic_lookup -install_name @rpath/libopenrdp-keyboard.dylib \
     -o "$app/Contents/Resources/libopenrdp-keyboard.dylib" "$here/Keyboard/openrdp_keyboard.m"
 
+freerdp="$out/freerdp"
+if [[ -x "$freerdp/bin/sdl-freerdp" ]]; then
+    echo "bundling FreeRDP from $freerdp"
+    mkdir -p "$app/Contents/Frameworks"
+    cp "$freerdp/bin/sdl-freerdp" "$app/Contents/MacOS/sdl-freerdp"
+    cp "$freerdp"/lib/*.dylib "$app/Contents/Frameworks/"
+else
+    echo "no bundled FreeRDP (run client/build-freerdp.sh); the app will use Homebrew's"
+fi
+
 sed "s/@VERSION@/$version/g" "$here/Resources/Info.plist" > "$app/Contents/Info.plist"
 cp "$root/assets/icon/AppIcon.icns" "$app/Contents/Resources/AppIcon.icns"
 
 # Ad-hoc signature: enough to run on this Mac and, after removing quarantine, on another.
-codesign --force --sign - "$app/Contents/Resources/libopenrdp-keyboard.dylib"
+# Inner code first, the app last.
+for f in "$app/Contents/Resources/libopenrdp-keyboard.dylib" "$app"/Contents/Frameworks/*.dylib "$app/Contents/MacOS/sdl-freerdp"; do
+    if [[ -e "$f" ]]; then codesign --force --sign - "$f"; fi
+done
 codesign --force --sign - "$app"
+codesign --verify --deep --strict "$app"
 rm -rf "$out/obj"
 
 lipo -info "$app/Contents/MacOS/OpenRDP Client"
 lipo -info "$app/Contents/Resources/libopenrdp-keyboard.dylib"
+if [[ -e "$app/Contents/MacOS/sdl-freerdp" ]]; then lipo -info "$app/Contents/MacOS/sdl-freerdp"; fi
 echo "built $app"
+
+if [[ "${1:-}" == "--dmg" ]]; then
+    dmg="$out/OpenRDP-Client-$version.dmg"
+    stage="$out/dmg"
+    rm -rf "$stage" "$dmg" && mkdir -p "$stage"
+    cp -R "$app" "$stage/"
+    ln -s /Applications "$stage/Applications"
+    hdiutil create -quiet -volname "OpenRDP Client" -srcfolder "$stage" -fs HFS+ -format UDZO "$dmg"
+    rm -rf "$stage"
+    echo "made $dmg"
+fi
 
 if [[ "${1:-}" == "--zip" ]]; then
     zip="$out/OpenRDP-Client-$version.zip"

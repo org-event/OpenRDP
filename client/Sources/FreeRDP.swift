@@ -1,7 +1,14 @@
 import Foundation
 
-/// Finds FreeRDP's SDL client installed with Homebrew.
+/// Finds FreeRDP's SDL client: the one inside the app (client/build-freerdp.sh),
+/// or one installed with Homebrew.
 enum FreeRDP {
+    /// Contents/MacOS/sdl-freerdp, with SDL3 built for the keyboard grab.
+    static var bundled: URL? {
+        Bundle.main.url(forAuxiliaryExecutable: "sdl-freerdp")
+            .flatMap { FileManager.default.isExecutableFile(atPath: $0.path) ? $0 : nil }
+    }
+
     /// Intel Homebrew first on an Intel Mac, Apple Silicon Homebrew first otherwise.
     static var candidates: [String] {
         #if arch(x86_64)
@@ -11,7 +18,8 @@ enum FreeRDP {
         #endif
     }
 
-    static func locate(custom: String) -> URL? {
+    static func locate(custom: String, preferBundled: Bool) -> URL? {
+        if preferBundled, let bundled { return bundled }
         let custom = (custom as NSString).expandingTildeInPath
         let paths = custom.isEmpty ? candidates : [custom]
         return paths.first { FileManager.default.isExecutableFile(atPath: $0) }.map { URL(fileURLWithPath: $0) }
@@ -137,7 +145,10 @@ final class Session: ObservableObject, Identifiable {
         }
         try process.run()
 
-        let lines = FreeRDP.arguments(for: server, password: password).joined(separator: "\n") + "\n\n"
+        var args = FreeRDP.arguments(for: server, password: password)
+        // Without the grab the bundled SDL leaves system shortcuts to this Mac too.
+        if !passSystemShortcuts { args.append("-grab-keyboard") }
+        let lines = args.joined(separator: "\n") + "\n\n"
         input.fileHandleForWriting.write(Data(lines.utf8))
         try? input.fileHandleForWriting.close()
     }

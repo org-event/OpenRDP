@@ -13,6 +13,11 @@ final class AppModel: ObservableObject {
     @Published var customBinaryPath: String {
         didSet { defaults.set(customBinaryPath, forKey: "customBinaryPath"); locateBinary() }
     }
+    /// Use the sdl-freerdp inside the app when there is one (stage 1 used Homebrew's).
+    @Published var preferBundled: Bool {
+        didSet { defaults.set(preferBundled, forKey: "preferBundled"); locateBinary() }
+    }
+    var isBundled: Bool { binary != nil && binary == FreeRDP.bundled }
     /// Pass Cmd+Space, Cmd+Tab, Cmd+Q and other system shortcuts to the session
     /// (see Keyboard/openrdp_keyboard.m).
     @Published var passSystemShortcuts: Bool {
@@ -28,6 +33,7 @@ final class AppModel: ObservableObject {
 
     init() {
         customBinaryPath = defaults.string(forKey: "customBinaryPath") ?? ""
+        preferBundled = defaults.object(forKey: "preferBundled") as? Bool ?? true
         passSystemShortcuts = defaults.object(forKey: "passSystemShortcuts") as? Bool ?? true
         hotkeyModifier = defaults.string(forKey: "hotkeyModifier").flatMap(HotkeyModifier.init(rawValue:)) ?? .rightCommandOption
         locateBinary()
@@ -35,7 +41,7 @@ final class AppModel: ObservableObject {
     }
 
     func locateBinary() {
-        binary = FreeRDP.locate(custom: customBinaryPath)
+        binary = FreeRDP.locate(custom: customBinaryPath, preferBundled: preferBundled)
         version = nil
         guard let binary else { return }
         Task { version = await FreeRDP.version(of: binary) }
