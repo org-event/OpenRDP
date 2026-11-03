@@ -8,10 +8,10 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
-# No release fixes these. They are not reachable holes in this server.
+# No release of the rsa crate fixes this one, and it is not a reachable hole
+# in this server.
 ignore = [
-    { id = "RUSTSEC-2023-0071", reason = "rsa via picky/sspi: Marvin timing attack, still unfixed upstream. TLS private-key operations use rustls/aws-lc, not this crate" },
-    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile: archived wrapper around the same parser as rustls-pki-types; informational, no vulnerability" },
+    { id = "RUSTSEC-2023-0071", reason = "rsa via picky/sspi: Marvin timing attack, unfixed in every rsa release. NTLM does not use RSA, and TLS private-key operations go through rustls/aws-lc, not this crate" },
 ]
 
 [licenses]
@@ -43,5 +43,6 @@ allow-wildcard-paths = true
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-# IronRDP is pinned to a revision with the server-side EGFX we need.
+# IronRDP comes from the org-event fork: current upstream plus several accounts,
+# the advanced-input hook and no rustls-pemfile, until upstream takes them.
 allow-git = ["https://github.com/org-event/IronRDP.git"]
