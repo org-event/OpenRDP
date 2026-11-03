@@ -5,6 +5,7 @@ mod broker;
 mod capture;
 mod clipboard;
 mod cursor;
+mod curtain;
 mod dialog;
 mod display;
 mod encoder;
@@ -68,6 +69,8 @@ OPTIONS:
                       stay put for a reconnect; 0 removes it at once
                       [default: 300]
   --hidpi             with --fixed-size: stream in pixels instead of points
+  --curtain           darken the Mac's own displays while a client is
+                      connected; the keyboard and mouse there still work
   --no-sound          do not play the Mac's sound on the client
   --no-clipboard      do not share the clipboard (Universal Clipboard between
                       Macs on one Apple ID fights with it)
@@ -101,6 +104,7 @@ struct Args {
     test_pattern: bool,
     clipboard: bool,
     sound: bool,
+    curtain: bool,
     cert: Option<std::path::PathBuf>,
     key: Option<std::path::PathBuf>,
     update: update::Mode,
@@ -158,6 +162,7 @@ fn parse_args(args: Vec<std::ffi::OsString>) -> anyhow::Result<Option<Args>> {
         test_pattern: args.contains("--test-pattern"),
         clipboard: !args.contains("--no-clipboard"),
         sound: !args.contains("--no-sound"),
+        curtain: args.contains("--curtain"),
         cert: args.opt_value_from_str("--cert")?,
         key: args.opt_value_from_str("--key")?,
         update: {
@@ -336,6 +341,7 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
         args.fixed_size = true;
         args.clipboard = false;
         args.sound = false;
+        args.curtain = false;
         args.update = update::Mode::Off;
         info!("login window");
     }
@@ -355,6 +361,7 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
         },
         hidpi: args.hidpi,
         match_client: !args.fixed_size,
+        curtain: args.curtain,
         max_pixels: args.max_pixels,
         keep_display: std::time::Duration::from_secs(args.keep_display),
         test_pattern: args.test_pattern,
