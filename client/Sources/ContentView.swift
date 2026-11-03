@@ -152,6 +152,7 @@ private struct ServerDetail: View {
                             : server.windowWidth.map { "\($0)×\(server.windowHeight ?? 0)" } ?? "Размер по умолчанию")
                         row("Сертификат", server.certificate.title)
                         row("Буфер обмена", server.clipboard ? "Общий" : "Выключен")
+                        row("Экран Мака", server.curtain ? "Гаснет во время сессии" : "Не гаснет")
                         if !server.extraArgumentList.isEmpty {
                             row("Дополнительно", server.extraArgumentList.joined(separator: " "))
                         }
