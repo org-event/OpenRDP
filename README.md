@@ -21,6 +21,7 @@ An open RDP server for macOS, built on [IronRDP](https://github.com/Devolutions/
 - **Input**: `CGEventPost`. RDP scancodes are mapped to Mac keycodes: Win → Command, Alt → Option. Double clicks are counted.
 - **Cursor**: sent as RDP pointer updates and drawn by the client, so it moves without video latency.
 - **Clipboard**: text, images and files, both ways. Files copied in Finder are offered to the client, which reads them from disk as it pastes. Files copied on the client are downloaded into `~/Library/Caches/OpenRDP/Clipboard` (only the latest copy is kept) and put on the pasteboard, so Finder pastes them. A copy over 16 GB is not taken. FreeRDP on macOS may not paste files that come from the server, since it needs FUSE for that.
+- **Drives**: a folder or drive the client redirects (FreeRDP `/drive:name,path`, Windows App "Folders") is mounted at `~/RDP Drives/<name>` while the client is connected, so Finder and every app can use it. A WebDAV server on 127.0.0.1, under a random path, turns each file call into RDPDR requests to the client, and the system's `mount_webdav` mounts it. It is slower than a local disk, and the first `cp` of a file after mounting can come out wrong (#22); Finder copies are right. `--no-drives` turns it off. A native FSKit volume is planned (#21).
 - **Power**: the Mac stays awake while the server runs, and its display stays on while a client is connected. A connecting client wakes a sleeping display.
 
 ## Requirements
@@ -143,7 +144,6 @@ The app is signed ad hoc. On another Mac, remove the quarantine after copying it
 
 The roadmap and design notes are in [docs/plan.md](docs/plan.md) (in Russian). Main gaps:
 
-- drive redirection;
 - Intel Macs.
 
 ## Contributing
