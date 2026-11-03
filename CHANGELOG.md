@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-03
+
 ### Added
 
 - Client drives: folders the client redirects (FreeRDP `/drive:name,path`) are mounted at `~/RDP Drives/<name>` while it is connected, through a WebDAV server on 127.0.0.1 and `mount_webdav`. Read, write, list, rename, delete and new folders go to the client over RDPDR. `--no-drives` turns it off. The IronRDP fork now sends the Server User Logged On PDU, without which clients never announce their drives.
@@ -155,7 +157,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/org-event/OpenRDP/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/org-event/OpenRDP/compare/v1.3.10...v1.4.0
 [1.3.10]: https://github.com/org-event/OpenRDP/compare/v1.3.9...v1.3.10
 [1.3.9]: https://github.com/org-event/OpenRDP/compare/v1.3.8...v1.3.9
