@@ -28,7 +28,7 @@ ironrdp-rdpsnd = { git = "https://github.com/org-event/IronRDP.git", rev = "2ae0
 ironrdp-server = { git = "https://github.com/org-event/IronRDP.git", rev = "2ae04424a3ce303e442819d69437ed69ecb30ef5", version = "0.14.0", default-features = false, features = ["egfx", "helper", "rayon"] }
 ironrdp-svc = { git = "https://github.com/org-event/IronRDP.git", rev = "2ae04424a3ce303e442819d69437ed69ecb30ef5", version = "0.10.0" }
 objc2 = "0.6.5"
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSPasteboard", "NSImageRep", "NSBitmapImageRep"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSPasteboard", "NSPasteboardItem", "NSImageRep", "NSBitmapImageRep"] }
 objc2-core-foundation = "0.3.2"
 objc2-core-graphics = "0.3.2"
 objc2-core-media = "0.3.2"
