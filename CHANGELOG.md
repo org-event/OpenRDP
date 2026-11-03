@@ -15,6 +15,7 @@ All notable changes to this project are documented here. The format follows [Kee
   - FreeRDP's own shortcuts on right ⌘ + ⌥ instead of right Shift, which broke capital П, К, В and Ь;
   - ⌘Space, ⌘Tab and ⌘Q go to the remote Mac, so the layout switches there.
 - Releases carry the client as `openrdp-client-<version>-universal.dmg` next to the server. CI builds it on every pull request and checks that every binary in it is universal and loads nothing from outside the app or macOS.
+- OpenRDP Client: each saved Mac has a "Darken the Mac's screen during the session" checkbox, off by default. When it is on, the client asks for the curtain with `/shell:curtain`.
 
 ## [1.4.0] - 2026-11-03
 

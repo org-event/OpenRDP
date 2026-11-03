@@ -63,7 +63,19 @@ enum FreeRDP {
             args.append("/size:\(w)x\(h)")
         }
         args.append(server.clipboard ? "+clipboard" : "-clipboard")
-        args += server.extraArgumentList
+
+        // The RDP alternate shell carries options for the OpenRDP server,
+        // joined with commas into one /shell, together with any the user added.
+        var shell: [String] = []
+        for arg in server.extraArgumentList {
+            if arg.lowercased().hasPrefix("/shell:") {
+                shell.append(String(arg.dropFirst("/shell:".count)))
+            } else {
+                args.append(arg)
+            }
+        }
+        if server.curtain { shell.insert("curtain", at: 0) }
+        if !shell.isEmpty { args.append("/shell:" + shell.joined(separator: ",")) }
         // A line break would split an argument in two, and an empty line ends the list.
         return args.map { $0.replacingOccurrences(of: "\n", with: "").replacingOccurrences(of: "\r", with: "") }
     }

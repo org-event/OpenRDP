@@ -53,6 +53,7 @@ struct ServerEditor: View {
                         }
                     }
                     Toggle("Общий буфер обмена", isOn: $server.clipboard)
+                    Toggle("Гасить экран Мака во время сессии", isOn: $server.curtain)
                     Picker("Сертификат", selection: $server.certificate) {
                         ForEach(Server.Certificate.allCases) { Text($0.title).tag($0) }
                     }
