@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-03
+
 ### Added
 
 - The bitrate follows the link. When frames are acknowledged well later than the best time seen on the connection, the server cuts it by a quarter, down to a quarter of `--bitrate`, and raises it back slowly while acknowledgements stay quick. Closes #3.
@@ -139,7 +141,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.3.10...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/org-event/OpenRDP/compare/v1.3.10...v1.4.0
 [1.3.10]: https://github.com/org-event/OpenRDP/compare/v1.3.9...v1.3.10
 [1.3.9]: https://github.com/org-event/OpenRDP/compare/v1.3.8...v1.3.9
 [1.3.8]: https://github.com/org-event/OpenRDP/compare/v1.3.7...v1.3.8
