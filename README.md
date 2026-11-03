@@ -110,6 +110,14 @@ On another machine, `openrdp-doctor wol <MAC> [broadcast]` sends a Wake-on-LAN p
 
 [`client/`](client) holds a small native Mac app (SwiftUI) that connects to OpenRDP servers through FreeRDP's `sdl-freerdp`, so you do not have to type the FreeRDP command by hand. A full build carries its own FreeRDP 3.32.2 with SDL3, FFmpeg (H.264 only) and OpenSSL inside the app, so the client Mac needs nothing else. Without it, the app uses FreeRDP from Homebrew (`brew install freerdp`) and looks for `sdl-freerdp` in `/usr/local/bin` (Intel) and `/opt/homebrew/bin` (Apple Silicon). Another path can be set in Settings. The app says so at once when `sdl-freerdp` is missing.
 
+To install it, download `openrdp-client-<version>-universal.dmg` from the [releases](https://github.com/org-event/OpenRDP/releases). It runs on Apple Silicon and Intel Macs with macOS 13 or newer. Drag OpenRDP Client onto Applications. The app is not notarized, so take it out of quarantine once:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/OpenRDP Client.app"
+```
+
+Every CI run on a pull request or on `main` also leaves the disk image as the `openrdp-client-universal` artifact.
+
 - **Saved Macs**: name, address, user and options. Passwords are kept in the Keychain. The app passes all options on `sdl-freerdp`'s stdin (`/args-from:stdin`), so the password does not show up in `ps` and is never written to a file.
 - **One-click connect** with `/gfx:avc444 /dynamic-resolution /cert:tofu`, full screen or a window size, and a shared clipboard. `tofu` remembers the server's certificate on the first connection and refuses one that changes later. "Do not check" (`/cert:ignore`) is also available.
 - **FreeRDP shortcuts without right Shift.** FreeRDP's default hotkey modifier is right Shift, which breaks capital П, К, В and Ь in the Russian layout, and right Shift+В disconnects. The app writes `SDL_KeyModMask` to `~/.config/freerdp/sdl-freerdp.json` (`$XDG_CONFIG_HOME/freerdp/` when that is set) and shows the shortcuts. The default is right ⌘ + right ⌥: with them, Enter toggles full screen, G toggles the keyboard grab, R toggles resizing, M minimizes and D disconnects.
