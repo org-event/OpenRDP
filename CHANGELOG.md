@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- Client drives: the first `cp` of a file could come out padded with zeros or with a later MiB repeating an earlier one. When webdavfs dropped a GET while a read was waiting for the client, that read's reply answered the next request, and every request after it got the data of the one before. Each request to the client now runs to its own reply. Closes #22.
+
 ## [1.5.1] - 2026-11-04
 
 ### Changed
