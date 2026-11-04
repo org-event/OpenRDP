@@ -474,6 +474,17 @@ impl RdpServerDisplay for MacDisplay {
     }
 }
 
+/// The largest frame `--avc444 auto` sends as AVC444, 3072x1920. The client
+/// decodes two H.264 streams per frame and rebuilds full chroma in software:
+/// an Intel MacBook running FreeRDP kept up at 2698x1674 (acknowledgements in
+/// 20 ms) and fell a minute behind at 4096x2560, dropping frames into a
+/// garbled picture. Larger frames go as AVC420, one stream.
+const AVC444_MAX_PIXELS: u32 = 3072 * 1920;
+
+fn avc444_fits((width, height): (u16, u16)) -> bool {
+    u32::from(width) * u32::from(height) <= AVC444_MAX_PIXELS
+}
+
 /// What one captured frame became.
 enum Coded {
     Avc420(EncodedFrame),
@@ -823,7 +834,10 @@ impl Pipeline {
                     server.supports_avc444()
                         && match self.config.avc444 {
                             Avc444::Off => false,
-                            Avc444::Auto => self.shared.advanced_input.load(Ordering::Acquire),
+                            Avc444::Auto => {
+                                self.shared.advanced_input.load(Ordering::Acquire)
+                                    && avc444_fits(self.shared.screen.get().desktop)
+                            }
                             Avc444::On => true,
                         }
                 })
@@ -1102,5 +1116,18 @@ impl GraphicsPipelineHandler for GfxHandler {
 
     fn on_close(&mut self) {
         debug!("EGFX channel closed");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn avc444_stops_above_3072x1920() {
+        assert!(avc444_fits((2698, 1674)));
+        assert!(avc444_fits((3072, 1920)));
+        assert!(!avc444_fits((3396, 2104)));
+        assert!(!avc444_fits((4096, 2560)));
     }
 }
