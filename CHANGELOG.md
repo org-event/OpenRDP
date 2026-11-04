@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.6.4] - 2026-11-04
+
 ### Changed
 
 - The installed OpenRDP shows one window, after the install and whenever it is opened again, instead of a string of small dialogs: the server's state, the RDP accounts (add, change a password, rename, remove), the checks, and removal from the Mac. It is a WebKit page in an AppKit window inside the server binary, so it updates with the server.
@@ -214,7 +216,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.3...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.4...HEAD
+[1.6.4]: https://github.com/org-event/OpenRDP/compare/v1.6.3...v1.6.4
 [1.6.3]: https://github.com/org-event/OpenRDP/compare/v1.6.2...v1.6.3
 [1.6.2]: https://github.com/org-event/OpenRDP/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/org-event/OpenRDP/compare/v1.6.0...v1.6.1
