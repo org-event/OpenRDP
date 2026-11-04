@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 
 - "Check for updates" in the installed OpenRDP's window: it says whether a newer release is out and installs it on the spot, as the six-hourly check would, then opens the window of the new build.
+- OpenRDP Client checks for a newer client at launch and from "Check for updates" in Settings. A newer one shows a banner; "Download" saves the disk image to Downloads and opens it.
 
 ### Fixed
 

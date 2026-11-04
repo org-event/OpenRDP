@@ -11,6 +11,7 @@ struct OpenRDPClientApp: App {
             ContentView()
                 .environmentObject(model)
                 .environmentObject(model.store)
+                .environmentObject(model.updates)
                 .frame(minWidth: 680, minHeight: 420)
                 .onAppear { delegate.model = model }
         }
@@ -22,6 +23,7 @@ struct OpenRDPClientApp: App {
         Settings {
             SettingsView()
                 .environmentObject(model)
+                .environmentObject(model.updates)
                 .frame(width: 560)
         }
     }

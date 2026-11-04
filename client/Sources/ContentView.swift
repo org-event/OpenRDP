@@ -29,6 +29,7 @@ struct ContentView: View {
         } detail: {
             VStack(spacing: 0) {
                 if model.binary == nil { MissingFreeRDPBanner() }
+                UpdateBanner()
                 if let server = store.servers.first(where: { $0.id == selection }) {
                     ServerDetail(server: server, edit: { editing = server })
                 } else {
@@ -358,6 +359,57 @@ private struct EmptyDetail: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Shown when the launch check found a newer client.
+private struct UpdateBanner: View {
+    @EnvironmentObject private var updates: Updates
+
+    var body: some View {
+        switch updates.state {
+        case .newer(let version, _), .downloading(let version):
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.down.circle.fill").foregroundStyle(.blue).font(.title2)
+                Text("Доступна версия \(version)").font(.headline)
+                Spacer()
+                UpdateControl()
+            }
+            .padding(12)
+            .background(.blue.opacity(0.1))
+        default:
+            EmptyView()
+        }
+    }
+}
+
+/// The check or download button and what came of it.
+struct UpdateControl: View {
+    @EnvironmentObject private var updates: Updates
+
+    var body: some View {
+        HStack(spacing: 8) {
+            switch updates.state {
+            case .idle:
+                Button("Проверить обновления") { updates.check() }
+            case .checking:
+                ProgressView().controlSize(.small)
+                Text("Проверяю…").foregroundStyle(.secondary)
+            case .current:
+                Label("Последняя версия", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                Button("Проверить ещё раз") { updates.check() }
+            case .newer(let version, _):
+                Button("Скачать \(version)") { updates.download() }
+                    .buttonStyle(.borderedProminent)
+            case .downloading:
+                ProgressView().controlSize(.small)
+                Text("Скачиваю…").foregroundStyle(.secondary)
+            case .failed(let problem):
+                Text(problem).foregroundStyle(.orange).font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Повторить") { updates.check() }
+            }
+        }
     }
 }
 
