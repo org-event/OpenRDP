@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/icon/AppIcon-256.png" width="128" height="128" alt=""></p>
+<p align="center"><img src="assets/icon/server-256.png" width="128" height="128" alt="OpenRDP"> <img src="assets/icon/client-256.png" width="128" height="128" alt="OpenRDP Client"></p>
 
 # OpenRDP
 

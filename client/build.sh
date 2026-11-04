@@ -56,7 +56,7 @@ else
 fi
 
 sed "s/@VERSION@/$version/g" "$here/Resources/Info.plist" > "$app/Contents/Info.plist"
-cp "$root/assets/icon/AppIcon.icns" "$app/Contents/Resources/AppIcon.icns"
+cp "$root/assets/icon/client.icns" "$app/Contents/Resources/AppIcon.icns"
 if [[ "${1:-}" == "--dmg" ]]; then
     # The disk-image window's picture, inside the app so the signature covers it.
     swift "$root/scripts/dmg-background.swift" \

@@ -23,8 +23,8 @@ const OLD_LABEL: &str = "com.macrdp.server";
 const BUNDLE_NAME: &str = "OpenRDP";
 const EXE_NAME: &str = "openrdp";
 /// Shown in Finder and in the Privacy & Security lists. Rebuilt from
-/// `AppIcon.svg` by `scripts/make-icon.swift`.
-const ICON: &[u8] = include_bytes!("../assets/icon/AppIcon.icns");
+/// `server-art.png` by `scripts/make-icon.swift`.
+const ICON: &[u8] = include_bytes!("../assets/icon/server.icns");
 
 struct Paths {
     app: PathBuf,
