@@ -62,6 +62,31 @@ pub fn watch(mode: Mode) {
     }
 }
 
+/// The latest release's tag when it is newer than this build, asked now.
+/// For the installed app's "Check for updates".
+pub fn newer_release() -> anyhow::Result<Option<String>> {
+    Ok(fetch_latest()?
+        .map(|release| release.tag)
+        .filter(|tag| is_newer(tag, env!("CARGO_PKG_VERSION"))))
+}
+
+/// Downloads, checks and installs the latest release into OpenRDP.app, as
+/// the automatic update does, and restarts the server. Returns its tag.
+pub fn install_newer() -> anyhow::Result<String> {
+    let release = fetch_latest()?.context("the latest release has no Apple Silicon archive")?;
+    anyhow::ensure!(
+        is_newer(&release.tag, env!("CARGO_PKG_VERSION")),
+        "{} is already installed",
+        env!("CARGO_PKG_VERSION")
+    );
+    anyhow::ensure!(
+        crate::service::running_from_app(),
+        "only the installed OpenRDP.app updates itself"
+    );
+    install_release(&release)?;
+    Ok(release.tag)
+}
+
 fn check_once(mode: Mode) -> anyhow::Result<()> {
     let current = env!("CARGO_PKG_VERSION");
     let release = fetch_latest()?;

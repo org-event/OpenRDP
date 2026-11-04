@@ -651,9 +651,11 @@ struct Video {
     screen: Screen,
     _source: Box<dyn Send>,
     encoder: Encoder,
-    /// Present for AVC444: frames are BGRA and go out as two views, the
-    /// auxiliary one through its own encoder.
-    avc444: Option<(crate::avc444::Splitter, Encoder)>,
+    /// Present for AVC444: frames are BGRA and go out as two views. The
+    /// auxiliary view has an encoder of its own for clients that decode each
+    /// view separately, and shares `encoder` with the main view (`None`) for
+    /// FreeRDP, which runs both through one decoder.
+    avc444: Option<(crate::avc444::Splitter, Option<Encoder>)>,
     region: Avc420Region,
 }
 
@@ -663,6 +665,7 @@ impl Video {
         config: &DisplayConfig,
         slot: &Arc<FrameSlot>,
         avc444: bool,
+        one_stream: bool,
     ) -> anyhow::Result<Self> {
         let surface = screen.surface();
         let content = (usize::from(screen.desktop.0), usize::from(screen.desktop.1));
@@ -691,7 +694,11 @@ impl Video {
         };
         let encoder = Encoder::new(buffer.0, buffer.1, config.fps, config.bitrate)?;
         // Windows clients decode each view with its own decoder, so each view is a
-        // stream of its own, with its own parameter sets and keyframes.
+        // stream of its own, with its own parameter sets and keyframes. FreeRDP
+        // feeds both views to one H.264 decoder: with two streams each view's
+        // P-frames referred to the other view's last picture, and the picture
+        // fell apart between keyframes. For it both views come from one encoder,
+        // main then auxiliary, so every reference is the picture it decodes.
         let avc444 = avc444
             .then(|| -> anyhow::Result<_> {
                 Ok((
@@ -700,7 +707,9 @@ impl Video {
                         buffer.1,
                         crate::avc444::Avc444Layout::V1,
                     )?,
-                    Encoder::new(buffer.0, buffer.1, config.fps, config.bitrate)?,
+                    (!one_stream)
+                        .then(|| Encoder::new(buffer.0, buffer.1, config.fps, config.bitrate))
+                        .transpose()?,
                 ))
             })
             .transpose()?;
@@ -724,7 +733,7 @@ impl Video {
 impl Video {
     fn set_bitrate(&self, bitrate: u32) {
         self.encoder.set_bitrate(bitrate);
-        if let Some((_, aux_encoder)) = &self.avc444 {
+        if let Some((_, Some(aux_encoder))) = &self.avc444 {
             aux_encoder.set_bitrate(bitrate);
         }
     }
@@ -736,7 +745,12 @@ impl Video {
         };
         let (main, aux) = splitter.split(&frame.0)?;
         let luma = self.encoder.encode(&main, keyframe)?;
-        let chroma = aux_encoder.encode(&aux, keyframe)?;
+        // In one stream the auxiliary view follows the main one and refers to
+        // it, so only the main view needs to be a keyframe.
+        let chroma = match aux_encoder {
+            Some(aux_encoder) => aux_encoder.encode(&aux, keyframe)?,
+            None => self.encoder.encode(&aux, false)?,
+        };
         match (luma, chroma) {
             (Some(luma), chroma) if !keyframe || chroma.is_some() => {
                 Ok(Some(Coded::Avc444 { luma, chroma }))
@@ -858,7 +872,8 @@ impl Pipeline {
                 drop(video.take());
                 last = None;
                 while slot.take().is_some() {}
-                let opened = Video::open(screen, &self.config, slot, avc444)?;
+                let one_stream = self.shared.advanced_input.load(Ordering::Acquire);
+                let opened = Video::open(screen, &self.config, slot, avc444, one_stream)?;
                 opened.set_bitrate(rate.current());
                 video = Some(opened);
                 generation = current;

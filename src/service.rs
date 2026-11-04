@@ -100,6 +100,10 @@ pub fn install_waiting(server_args: &[String], user: &str, password: &str) -> an
 
 /// The signed app the agent runs. Permission prompts have to come from this
 /// binary, not from the copy that was dragged out of the disk image.
+pub(crate) fn installed_app() -> PathBuf {
+    paths().map_or_else(|_| PathBuf::from("OpenRDP"), |paths| paths.app)
+}
+
 pub(crate) fn installed_binary() -> anyhow::Result<PathBuf> {
     Ok(paths()?.binary)
 }

@@ -170,6 +170,30 @@ fn handle(message: &str) {
             Err(err) => format!("app.removed({})", js_string(&format!("{err:#}"))),
         }),
         "log" => eprintln!("settings page: {}", arg(0)),
+        "update-check" => in_background(|| match crate::update::newer_release() {
+            Ok(tag) => format!(
+                "app.update({{\"newer\":{}}})",
+                tag.as_deref().map_or_else(|| "null".to_owned(), js_string)
+            ),
+            Err(err) => format!(
+                "app.update({{\"error\":{}}})",
+                js_string(&format!("{err:#}"))
+            ),
+        }),
+        "update-install" => in_background(|| match crate::update::install_newer() {
+            Ok(tag) => {
+                // The window belongs to the old build: open the new one, then go.
+                let _ = std::process::Command::new("/usr/bin/open")
+                    .args(["-n", "-a"])
+                    .arg(crate::service::installed_app())
+                    .status();
+                format!("app.update({{\"installed\":{}}})", js_string(&tag))
+            }
+            Err(err) => format!(
+                "app.update({{\"error\":{}}})",
+                js_string(&format!("{err:#}"))
+            ),
+        }),
         "quit" => {
             if let Some(mtm) = MainThreadMarker::new() {
                 NSApplication::sharedApplication(mtm).terminate(None);
