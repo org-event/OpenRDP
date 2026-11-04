@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.6.5] - 2026-11-04
+
 ### Added
 
 - "Check for updates" in the installed OpenRDP's window: it says whether a newer release is out and installs it on the spot, as the six-hourly check would, then opens the window of the new build.
@@ -231,7 +233,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.4...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.5...HEAD
+[1.6.5]: https://github.com/org-event/OpenRDP/compare/v1.6.4...v1.6.5
 [1.6.4]: https://github.com/org-event/OpenRDP/compare/v1.6.3...v1.6.4
 [1.6.3]: https://github.com/org-event/OpenRDP/compare/v1.6.2...v1.6.3
 [1.6.2]: https://github.com/org-event/OpenRDP/compare/v1.6.1...v1.6.2
