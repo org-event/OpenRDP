@@ -3,9 +3,22 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var updates: Updates
 
     var body: some View {
         Form {
+            Section {
+                LabeledContent("OpenRDP Client \(Updates.current)") {
+                    UpdateControl()
+                }
+            } header: {
+                Text("Обновления")
+            } footer: {
+                Text("Новая версия проверяется и при запуске. Образ скачивается в «Загрузки» и открывается: перетащите приложение в «Программы».")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section("FreeRDP") {
                 if FreeRDP.bundled != nil {
                     Toggle("Встроенный FreeRDP", isOn: $model.preferBundled)

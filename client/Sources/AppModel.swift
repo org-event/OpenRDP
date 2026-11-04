@@ -5,6 +5,7 @@ import Foundation
 @MainActor
 final class AppModel: ObservableObject {
     let store = ServerStore()
+    let updates = Updates()
     @Published private(set) var sessions: [UUID: Session] = [:]
     @Published private(set) var binary: URL?
     @Published private(set) var version: String?
@@ -43,6 +44,7 @@ final class AppModel: ObservableObject {
         locateBinary()
         applyHotkeys()
         Task { await watchHosts() }
+        updates.check(quiet: true)
     }
 
     func status(of server: Server) -> HostStatus { statuses[server.id] ?? .unknown }
