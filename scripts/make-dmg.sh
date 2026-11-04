@@ -1,21 +1,39 @@
 #!/bin/bash
-# Build a drag-and-drop disk image: OpenRDP.app on the left, Applications on the right.
-# Usage: scripts/make-dmg.sh <openrdp-binary> <version> <output.dmg>
+# Build a drag-and-drop disk image: the app on the left, Applications on the right.
+# Usage:
+#   scripts/make-dmg.sh <openrdp-binary> <version> <output.dmg>   the server, OpenRDP.app
+#   scripts/make-dmg.sh --app <Name.app> <output.dmg>             an app built and signed
+#     elsewhere; it must already hold Contents/Resources/background.png, drawn by
+#     scripts/dmg-background.swift with its name before it was signed.
 
 set -euo pipefail
 
-if [[ $# -ne 3 ]]; then
+usage() {
   echo "usage: $0 <openrdp-binary> <version> <output.dmg>" >&2
+  echo "       $0 --app <Name.app> <output.dmg>" >&2
   exit 2
-fi
+}
+[[ $# -eq 3 ]] || usage
 
-binary=$1
-version=$2
-output=$3
+prebuilt=
+if [[ $1 == --app ]]; then
+  prebuilt=${2%/}
+  output=$3
+  name=$(basename "$prebuilt" .app)
+  if [[ ! -f "$prebuilt/Contents/Resources/background.png" ]]; then
+    echo "$prebuilt has no Contents/Resources/background.png" >&2
+    exit 1
+  fi
+else
+  binary=$1
+  version=$2
+  output=$3
+  name=OpenRDP
+fi
 root=$(cd "$(dirname "$0")/.." && pwd)
 stage=$(mktemp -d)
 rw="$stage/rw.dmg"
-vol=OpenRDP
+vol=$name
 mount="/Volumes/$vol"
 attached=0
 
@@ -32,6 +50,9 @@ if [[ -d "$mount" ]]; then
   exit 1
 fi
 
+if [[ -n $prebuilt ]]; then
+  app=$prebuilt
+else
 app="$stage/OpenRDP.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary" "$app/Contents/MacOS/openrdp"
@@ -54,19 +75,26 @@ cat > "$app/Contents/Info.plist" <<EOF
 </plist>
 EOF
 codesign --force --sign - --identifier com.openrdp.server "$app"
+fi
 
 mibs=$(du -sm "$app" | awk '{print $1}')
 hdiutil create -size "$((mibs + 32))m" -fs HFS+ -volname "$vol" "$rw" >/dev/null
 hdiutil attach "$rw" >/dev/null
 attached=1
-cp -R "$app" "$mount/OpenRDP.app"
+cp -R "$app" "$mount/$name.app"
 ln -s /Applications "$mount/Applications"
-printf '%s\n' 'xattr -dr com.apple.quarantine /Applications/OpenRDP.app' \
-  > "$mount/command.txt"
+installed="/Applications/$name.app"
+if [[ $installed == *" "* ]]; then installed="\"$installed\""; fi
+printf 'xattr -dr com.apple.quarantine %s\n' "$installed" > "$mount/command.txt"
 # The picture lives inside the app, so the window has no extra folder to draw.
-# Its stdout is the same 8-point grid the picture was drawn on.
-swift "$root/scripts/dmg-background.swift" \
-  "$mount/OpenRDP.app/Contents/Resources/background.png" > "$stage/layout"
+# Its stdout is the same 8-point grid the picture was drawn on. A prebuilt app
+# carries the picture under its signature; draw a copy only for the layout.
+if [[ -n $prebuilt ]]; then
+  picture="$stage/background.png"
+else
+  picture="$mount/$name.app/Contents/Resources/background.png"
+fi
+swift "$root/scripts/dmg-background.swift" "$picture" "$name" > "$stage/layout"
 # shellcheck disable=SC1091
 source "$stage/layout"
 # Assigned by the layout file, which shellcheck cannot follow.
@@ -92,11 +120,11 @@ tell application "Finder"
     set arrangement of viewOptions to not arranged
     set icon size of viewOptions to 128
     set text size of viewOptions to 13
-    set background picture of viewOptions to file "OpenRDP.app:Contents:Resources:background.png"
+    set background picture of viewOptions to file "${name}.app:Contents:Resources:background.png"
     try
       set visible of item ".fseventsd" of container window to false
     end try
-    set position of item "OpenRDP.app" of container window to {${icon_left}, ${icon_top}}
+    set position of item "${name}.app" of container window to {${icon_left}, ${icon_top}}
     set position of item "Applications" of container window to {${icon_right}, ${icon_top}}
     set position of item "command.txt" of container window to {${text_x}, ${text_y}}
     close
@@ -107,7 +135,7 @@ tell application "Finder"
     try
       set visible of item ".fseventsd" of container window to false
     end try
-    set position of item "OpenRDP.app" of container window to {${icon_left}, ${icon_top}}
+    set position of item "${name}.app" of container window to {${icon_left}, ${icon_top}}
     set position of item "Applications" of container window to {${icon_right}, ${icon_top}}
     set position of item "command.txt" of container window to {${text_x}, ${text_y}}
     close
