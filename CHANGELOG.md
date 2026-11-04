@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-11-04
+
+### Fixed
+
+- The graphical install granted Screen Recording and Accessibility to the copy dragged out of the disk image, not to the installed app, so a clean install said "Done" and the server still had no picture or input. The copy ran the installed app as its child, and macOS holds a parent responsible for its child; it now starts it through Launch Services.
+- The server no longer logs an error for each status check from OpenRDP Client, a connection that closes before its first frame.
+
 ## [1.6.1] - 2026-11-04
 
 ### Added
@@ -185,7 +192,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.2...HEAD
+[1.6.2]: https://github.com/org-event/OpenRDP/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/org-event/OpenRDP/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/org-event/OpenRDP/compare/v1.5.2...v1.6.0
 [1.5.2]: https://github.com/org-event/OpenRDP/compare/v1.5.1...v1.5.2
