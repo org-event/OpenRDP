@@ -170,22 +170,41 @@ fn manage_accounts(ru: bool, status: &str) -> anyhow::Result<()> {
         if let Some(problem) = problem.take() {
             message.push_str(&format!("\n\n⚠️ {problem}"));
         }
-        let (done_b, add_b, edit_b) = if ru {
-            ("Готово", "Добавить…", "Изменить…")
+        let (done_b, accounts_b, check_b, more_b) = if ru {
+            ("Готово", "Аккаунты…", "Проверить снова", "Ещё…")
         } else {
-            ("Done", "Add…", "Change…")
+            ("Done", "Accounts…", "Check again", "More…")
         };
-        let mut buttons = vec![add_b, done_b];
-        if !names.is_empty() {
-            buttons.insert(1, edit_b);
-        }
-        let Some(pressed) = dialog::choose_button(&message, &buttons)? else {
+        let Some(pressed) = dialog::choose_button(&message, &[more_b, accounts_b, done_b])? else {
             return Ok(());
         };
-        let result = if pressed == add_b {
-            add_account(ru, &path)
-        } else if pressed == edit_b {
-            edit_account(ru, &path, &names)
+        let result = if pressed == accounts_b {
+            pick_account(ru, &path, &names)
+        } else if pressed == more_b {
+            let check = if ru {
+                "Проверить сервер"
+            } else {
+                "Check the server"
+            };
+            let remove = if ru {
+                "Удалить OpenRDP с этого Mac…"
+            } else {
+                "Remove OpenRDP from this Mac…"
+            };
+            let ok = if ru { "Выбрать" } else { "Choose" };
+            let prompt = if ru {
+                "Что сделать?"
+            } else {
+                "What to do?"
+            };
+            match dialog::choose_item(prompt, &[check.to_owned(), remove.to_owned()], ok)? {
+                Some(item) if item == check => show_checkup(ru, check_b, done_b),
+                Some(item) if item == remove => match remove_everything(ru) {
+                    Ok(true) => return Ok(()),
+                    other => other.map(|_| ()),
+                },
+                _ => Ok(()),
+            }
         } else {
             return Ok(());
         };
@@ -213,22 +232,62 @@ fn add_account(ru: bool, path: &std::path::Path) -> anyhow::Result<()> {
     crate::users::save(path, &accounts)
 }
 
-fn edit_account(ru: bool, path: &std::path::Path, names: &[String]) -> anyhow::Result<()> {
-    let name = match names {
-        [only] => only.clone(),
-        _ => {
-            let prompt = if ru {
-                "Какой аккаунт изменить?"
-            } else {
-                "Which account?"
-            };
-            let ok = if ru { "Выбрать" } else { "Choose" };
-            let Some(name) = dialog::choose_item(prompt, names, ok)? else {
-                return Ok(());
-            };
-            name
+/// The server's checks, again as often as asked.
+fn show_checkup(ru: bool, again: &str, done: &str) -> anyhow::Result<()> {
+    loop {
+        let report = crate::checkup::report(ru, &crate::checkup::run(ru));
+        if dialog::choose_button(&report, &[again, done])?.as_deref() != Some(again) {
+            return Ok(());
         }
+    }
+}
+
+/// A new account, or one of `names` to change.
+fn pick_account(ru: bool, path: &std::path::Path, names: &[String]) -> anyhow::Result<()> {
+    let add = if ru {
+        "＋ Добавить аккаунт"
+    } else {
+        "＋ Add an account"
     };
+    let mut items = vec![add.to_owned()];
+    items.extend(names.iter().cloned());
+    let prompt = if ru {
+        "Добавить аккаунт или выбрать, какой изменить:"
+    } else {
+        "Add an account, or pick one to change:"
+    };
+    let ok = if ru { "Выбрать" } else { "Choose" };
+    match dialog::choose_item(prompt, &items, ok)? {
+        Some(item) if item == add => add_account(ru, path),
+        Some(name) => edit_account(ru, path, &name),
+        None => Ok(()),
+    }
+}
+
+/// Removes the server from this Mac after asking: the services, the app,
+/// its data and logs, its permissions and the copy from the disk image.
+/// `true` when it is gone.
+fn remove_everything(ru: bool) -> anyhow::Result<bool> {
+    let question = if ru {
+        "Удалить OpenRDP с этого Mac полностью? Уйдут сервер и служба окна входа, приложение, аккаунты RDP, сертификат, журналы, разрешения записи экрана и универсального доступа и копия в «Программах». Файлы перенесутся в Корзину. macOS спросит пароль администратора. Настройки самого Mac (SSH, «Общий экран», включение после сбоя питания) останутся."
+    } else {
+        "Remove OpenRDP from this Mac completely? The server and its login-window service, the app, the RDP accounts, the certificate, the logs, the Screen Recording and Accessibility permissions and the copy in Applications all go. Files go to the Trash. macOS will ask for an administrator password. The Mac's own settings (SSH, Screen Sharing, start-up after a power failure) stay."
+    };
+    let button = if ru { "Удалить" } else { "Remove" };
+    if !dialog::proceed(question, button)? {
+        return Ok(false);
+    }
+    crate::service::uninstall_everything()?;
+    dialog::note(if ru {
+        "OpenRDP удалён. Файлы в Корзине."
+    } else {
+        "OpenRDP is removed. The files are in the Trash."
+    })?;
+    Ok(true)
+}
+
+fn edit_account(ru: bool, path: &std::path::Path, name: &str) -> anyhow::Result<()> {
+    let name = name.to_owned();
     let actions: Vec<String> = if ru {
         vec![
             "Сменить пароль".into(),

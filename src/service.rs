@@ -261,6 +261,59 @@ pub fn uninstall() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// `uninstall`, and also what it leaves: the permissions, the accounts, TLS
+/// identity and signing keychain, the log, and the copy dragged into
+/// /Applications. Files go to the Trash.
+pub fn uninstall_everything() -> anyhow::Result<()> {
+    let paths = paths()?;
+    // While the app is still there for tccutil to find by its identifier.
+    for service in [
+        "ScreenCapture",
+        "Accessibility",
+        "SystemPolicyDesktopFolder",
+        "SystemPolicyDocumentsFolder",
+        "SystemPolicyDownloadsFolder",
+    ] {
+        let _ = Command::new("/usr/bin/tccutil")
+            .args(["reset", service, LABEL])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+    uninstall()?;
+    let copy = PathBuf::from("/Applications/OpenRDP.app");
+    let copy = is_openrdp(&copy).then_some(copy);
+    for path in [Some(paths.support), Some(paths.log), copy]
+        .into_iter()
+        .flatten()
+    {
+        if path.exists() {
+            to_trash(&path).with_context(|| format!("move {} to the Trash", path.display()))?;
+        }
+    }
+    Ok(())
+}
+
+/// Whether `app` is an OpenRDP bundle, not something else with the name.
+fn is_openrdp(app: &Path) -> bool {
+    std::fs::read_to_string(app.join("Contents/Info.plist"))
+        .is_ok_and(|plist| plist.contains(LABEL))
+}
+
+fn to_trash(path: &Path) -> anyhow::Result<()> {
+    let trash = home_dir()?.join(".Trash");
+    std::fs::create_dir_all(&trash)?;
+    let name = path.file_name().context("no file name")?.to_string_lossy();
+    let mut target = trash.join(format!("OpenRDP {name}"));
+    let mut n = 2;
+    while target.exists() {
+        target = trash.join(format!("OpenRDP {name} {n}"));
+        n += 1;
+    }
+    std::fs::rename(path, &target)?;
+    Ok(())
+}
+
 /// Stops the agent if it is loaded; quiet when it is not.
 fn stop() {
     let _ = bootout(LABEL);

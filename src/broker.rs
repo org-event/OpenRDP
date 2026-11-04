@@ -514,6 +514,9 @@ pub(crate) fn uninstall_system() -> anyhow::Result<()> {
             std::fs::remove_file(path).with_context(|| format!("remove {path}"))?;
         }
     }
+    // Its log, and the directory once it is empty.
+    let _ = std::fs::remove_file(BROKER_LOG);
+    let _ = std::fs::remove_dir(SYSTEM_DIR);
     println!("Removed the login-window service.");
     Ok(())
 }
