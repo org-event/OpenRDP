@@ -1,17 +1,25 @@
 import AppKit
+import CryptoKit
 import Foundation
 
 /// Newer releases of the client on GitHub: checked at launch and from the
-/// button in Settings. A newer disk image is downloaded to ~/Downloads and
-/// opened, so installing it is the usual drag onto Applications.
+/// button in Settings. "Update" downloads the release's disk image, checks it
+/// against the release's SHA-256, puts the new app in place of this one and
+/// starts it.
 @MainActor
 final class Updates: ObservableObject {
+    struct Available: Equatable {
+        let version: String
+        let image: URL
+        let checksum: URL
+    }
+
     enum State: Equatable {
         case idle
         case checking
         case current
-        case newer(version: String, url: URL)
-        case downloading(version: String)
+        case newer(Available)
+        case updating(version: String)
         case failed(String)
     }
 
@@ -28,7 +36,7 @@ final class Updates: ObservableObject {
     /// Asks GitHub. With `quiet`, an error leaves the state as it was: the
     /// launch check should not complain when the Mac is offline.
     func check(quiet: Bool = false) {
-        if case .downloading = state { return }
+        if case .updating = state { return }
         if !quiet { state = .checking }
         Task {
             do {
@@ -42,38 +50,100 @@ final class Updates: ObservableObject {
                     if !quiet { state = .current }
                     return
                 }
-                guard let asset = release.assets.first(where: { $0.name.hasPrefix("openrdp-client-") && $0.name.hasSuffix("-universal.dmg") }),
-                      let url = URL(string: asset.url), asset.url.hasPrefix(Self.downloads) else {
+                let url = { (name: String) in
+                    release.assets.first { $0.name == name }
+                        .flatMap { $0.url.hasPrefix(Self.downloads) ? URL(string: $0.url) : nil }
+                }
+                guard let image = release.assets.first(where: { $0.name.hasPrefix("openrdp-client-") && $0.name.hasSuffix("-universal.dmg") }),
+                      let imageURL = url(image.name), let checksumURL = url(image.name + ".sha256") else {
                     if !quiet { state = .failed("В релизе \(release.tag) нет образа клиента.") }
                     return
                 }
-                state = .newer(version: version, url: url)
+                state = .newer(Available(version: version, image: imageURL, checksum: checksumURL))
             } catch {
                 if !quiet { state = .failed("Не удалось проверить обновления: \(error.localizedDescription)") }
             }
         }
     }
 
-    /// Downloads the disk image into ~/Downloads and opens it.
-    func download() {
-        guard case .newer(let version, let url) = state else { return }
-        state = .downloading(version: version)
+    /// Downloads and checks the new client, then quits; a small script waits
+    /// for this process to end, swaps the app and opens the new one.
+    /// `sessionsOpen` refuses while a session would be cut off.
+    func update(sessionsOpen: Bool) {
+        guard case .newer(let available) = state else { return }
+        if sessionsOpen {
+            state = .failed("Закройте открытые сеансы, потом нажмите «Обновить» снова.")
+            Task { try? await Task.sleep(nanoseconds: 4_000_000_000); state = .newer(available) }
+            return
+        }
+        state = .updating(version: available.version)
         Task {
             do {
-                let (temporary, response) = try await URLSession.shared.download(from: url)
-                guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-                    throw URLError(.badServerResponse)
-                }
-                let folder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
-                let target = folder.appendingPathComponent(url.lastPathComponent)
-                try? FileManager.default.removeItem(at: target)
-                try FileManager.default.moveItem(at: temporary, to: target)
-                NSWorkspace.shared.open(target)
-                state = .newer(version: version, url: url)
+                let staged = try await Self.stage(available)
+                try Self.swapAndRelaunch(with: staged)
+                NSApp.terminate(nil)
             } catch {
-                state = .failed("Не удалось скачать \(version): \(error.localizedDescription)")
+                state = .failed("Не удалось обновить до \(available.version): \(error.localizedDescription)")
             }
         }
+    }
+
+    /// The new app, copied out of the verified disk image into a folder of its own.
+    private static func stage(_ available: Available) async throws -> URL {
+        let work = FileManager.default.temporaryDirectory.appendingPathComponent("openrdp-client-update-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        let (downloaded, response) = try await URLSession.shared.download(from: available.image)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw UpdateError("сервер не отдал образ") }
+        let image = work.appendingPathComponent("client.dmg")
+        try FileManager.default.moveItem(at: downloaded, to: image)
+
+        let (sum, _) = try await URLSession.shared.data(from: available.checksum)
+        guard let expected = String(decoding: sum, as: UTF8.self).split(whereSeparator: \.isWhitespace).first?.lowercased(),
+              expected.count == 64 else { throw UpdateError("в релизе нет контрольной суммы") }
+        let actual = SHA256.hash(data: try Data(contentsOf: image)).map { String(format: "%02x", $0) }.joined()
+        guard actual == expected else { throw UpdateError("контрольная сумма не совпала") }
+
+        let mount = work.appendingPathComponent("mount")
+        try run("/usr/bin/hdiutil", ["attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount.path, image.path])
+        defer { try? run("/usr/bin/hdiutil", ["detach", "-quiet", mount.path]) }
+        let app = mount.appendingPathComponent("OpenRDP Client.app")
+        guard FileManager.default.fileExists(atPath: app.path) else { throw UpdateError("в образе нет OpenRDP Client.app") }
+        let staged = work.appendingPathComponent("OpenRDP Client.app")
+        try run("/usr/bin/ditto", [app.path, staged.path])
+        return staged
+    }
+
+    /// Starts the swap, which waits for this process to exit.
+    private static func swapAndRelaunch(with staged: URL) throws {
+        let target = Bundle.main.bundleURL
+        guard FileManager.default.isWritableFile(atPath: target.deletingLastPathComponent().path) else {
+            throw UpdateError("нет права записи в \(target.deletingLastPathComponent().path)")
+        }
+        let script = """
+        while kill -0 "$1" 2>/dev/null; do sleep 0.2; done
+        rm -rf "$2.old" && mv "$2" "$2.old" && /usr/bin/ditto "$3" "$2" && rm -rf "$2.old" || { rm -rf "$2"; mv "$2.old" "$2"; }
+        /usr/bin/xattr -dr com.apple.quarantine "$2" 2>/dev/null
+        rm -rf "$(dirname "$3")"
+        /usr/bin/open "$2"
+        """
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", script, "update", String(ProcessInfo.processInfo.processIdentifier), target.path, staged.path]
+        p.standardInput = FileHandle.nullDevice
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        try p.run()
+    }
+
+    private static func run(_ tool: String, _ arguments: [String]) throws {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: tool)
+        p.arguments = arguments
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        try p.run()
+        p.waitUntilExit()
+        guard p.terminationStatus == 0 else { throw UpdateError("\((tool as NSString).lastPathComponent) завершился с кодом \(p.terminationStatus)") }
     }
 
     /// Whether dotted version `a` is newer than `b`.
@@ -85,6 +155,11 @@ final class Updates: ObservableObject {
             if l != r { return l > r }
         }
         return false
+    }
+
+    private struct UpdateError: LocalizedError {
+        let errorDescription: String?
+        init(_ text: String) { errorDescription = text }
     }
 
     private struct Release: Decodable {

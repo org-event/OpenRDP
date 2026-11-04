@@ -368,24 +368,31 @@ private struct UpdateBanner: View {
 
     var body: some View {
         switch updates.state {
-        case .newer(let version, _), .downloading(let version):
-            HStack(spacing: 10) {
+        case .newer(let available):
+            banner("Доступна версия \(available.version)")
+        case .updating(let version):
+            banner("Обновляю до \(version)…")
+        default:
+            EmptyView()
+        }
+    }
+
+    private func banner(_ title: String) -> some View {
+        HStack(spacing: 10) {
                 Image(systemName: "arrow.down.circle.fill").foregroundStyle(.blue).font(.title2)
-                Text("Доступна версия \(version)").font(.headline)
+                Text(title).font(.headline)
                 Spacer()
                 UpdateControl()
             }
             .padding(12)
             .background(.blue.opacity(0.1))
-        default:
-            EmptyView()
-        }
     }
 }
 
 /// The check or download button and what came of it.
 struct UpdateControl: View {
     @EnvironmentObject private var updates: Updates
+    @EnvironmentObject private var model: AppModel
 
     var body: some View {
         HStack(spacing: 8) {
@@ -398,12 +405,12 @@ struct UpdateControl: View {
             case .current:
                 Label("Последняя версия", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                 Button("Проверить ещё раз") { updates.check() }
-            case .newer(let version, _):
-                Button("Скачать \(version)") { updates.download() }
+            case .newer(let available):
+                Button("Обновить до \(available.version)") { updates.update(sessionsOpen: model.runningCount > 0) }
                     .buttonStyle(.borderedProminent)
-            case .downloading:
+            case .updating:
                 ProgressView().controlSize(.small)
-                Text("Скачиваю…").foregroundStyle(.secondary)
+                Text("Скачиваю и проверяю…").foregroundStyle(.secondary)
             case .failed(let problem):
                 Text(problem).foregroundStyle(.orange).font(.caption)
                     .fixedSize(horizontal: false, vertical: true)
