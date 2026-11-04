@@ -156,68 +156,6 @@ pub fn proceed_script(message: &str, cancel: &str, button: &str) -> String {
     )
 }
 
-/// A dialog with up to three buttons, the last one the default; the button
-/// pressed, or `None` when it was closed.
-pub fn choose_button(message: &str, buttons: &[&str]) -> anyhow::Result<Option<String>> {
-    let output = osascript(&buttons_script(message, buttons))?;
-    if !output.status.success() {
-        return Ok(None);
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
-    Ok(button_returned(&text).map(str::to_owned))
-}
-
-pub fn buttons_script(message: &str, buttons: &[&str]) -> String {
-    let list = buttons
-        .iter()
-        .map(|b| apple(b))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let default = buttons.last().map_or_else(String::new, |b| apple(b));
-    format!(
-        "display dialog {} buttons {{{list}}} default button {default} with title \"OpenRDP\"",
-        apple(message)
-    )
-}
-
-/// The item picked from `items`, or `None` when cancelled.
-pub fn choose_item(prompt: &str, items: &[String], ok: &str) -> anyhow::Result<Option<String>> {
-    let output = osascript(&list_script(prompt, items, ok, cancel_button()))?;
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    if !output.status.success() || text.is_empty() || text == "false" {
-        return Ok(None);
-    }
-    Ok(Some(text))
-}
-
-pub fn list_script(prompt: &str, items: &[String], ok: &str, cancel: &str) -> String {
-    let list = items
-        .iter()
-        .map(|i| apple(i))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let first = items.first().map_or_else(String::new, |i| apple(i));
-    format!(
-        "choose from list {{{list}}} with title \"OpenRDP\" with prompt {} default items {{{first}}} OK button name {} cancel button name {}",
-        apple(prompt),
-        apple(ok),
-        apple(cancel),
-    )
-}
-
-/// The button from `osascript`'s `button returned:…` line.
-pub fn button_returned(output: &str) -> Option<&str> {
-    let line = output.lines().next()?;
-    let value = line.split_once("button returned:")?.1;
-    Some(
-        value
-            .split(", text returned:")
-            .next()
-            .unwrap_or(value)
-            .trim(),
-    )
-}
-
 /// Runs `command` as root. The system shows its own password dialog.
 pub fn authorize(command: &str, prompt: &str) -> anyhow::Result<std::process::ExitStatus> {
     let output = osascript(&admin_script(command, prompt))?;
@@ -289,28 +227,6 @@ mod tests {
         assert!(script.contains("with administrator privileges"));
         assert!(script.contains("with prompt \"просит пароль\""));
         assert!(script.contains("do shell script \"'/Apps/OpenRDP.app/Contents/MacOS/openrdp' install-system '/tmp/staged'\""));
-    }
-
-    #[test]
-    fn buttons_and_lists_read_back() {
-        assert_eq!(
-            button_returned("button returned:Изменить…\n"),
-            Some("Изменить…")
-        );
-        assert_eq!(
-            button_returned("button returned:OK, text returned:ivan\n"),
-            Some("OK")
-        );
-        let script = buttons_script("Аккаунты", &["Добавить…", "Готово"]);
-        assert!(script.contains("buttons {\"Добавить…\", \"Готово\"} default button \"Готово\""));
-        let list = list_script(
-            "Какой?",
-            &["ivan".into(), "sergey".into()],
-            "Выбрать",
-            "Отмена",
-        );
-        assert!(list.contains("choose from list {\"ivan\", \"sergey\"}"));
-        assert!(list.contains("default items {\"ivan\"}"));
     }
 
     #[test]
