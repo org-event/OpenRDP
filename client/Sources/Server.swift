@@ -46,6 +46,14 @@ struct Server: Identifiable, Codable, Hashable {
     var curtain = false
     /// Extra FreeRDP options, one per line, for example `/network:lan`.
     var extraArguments = ""
+    /// The macOS account on the server Mac, for unlocking FileVault over SSH
+    /// after a power cut and for Screen Sharing. Its password is in the
+    /// Keychain next to the RDP one.
+    var macUser = ""
+    var sshPort = 22
+    /// The server Mac's Ethernet or Wi-Fi address for Wake-on-LAN, such as
+    /// `a4:83:e7:12:34:56`. Learnt from the ARP table while the Mac is up.
+    var wakeAddress = ""
 
     init() {}
 
@@ -67,6 +75,9 @@ struct Server: Identifiable, Codable, Hashable {
         clipboard = try c.decodeIfPresent(Bool.self, forKey: .clipboard) ?? d.clipboard
         curtain = try c.decodeIfPresent(Bool.self, forKey: .curtain) ?? d.curtain
         extraArguments = try c.decodeIfPresent(String.self, forKey: .extraArguments) ?? d.extraArguments
+        macUser = try c.decodeIfPresent(String.self, forKey: .macUser) ?? d.macUser
+        sshPort = try c.decodeIfPresent(Int.self, forKey: .sshPort) ?? d.sshPort
+        wakeAddress = try c.decodeIfPresent(String.self, forKey: .wakeAddress) ?? d.wakeAddress
     }
 
     var displayName: String { name.isEmpty ? host : name }
@@ -112,6 +123,7 @@ final class ServerStore: ObservableObject {
     func delete(_ server: Server) {
         servers.removeAll { $0.id == server.id }
         Keychain.deletePassword(for: server.id)
+        Keychain.deletePassword(for: server.id, .mac)
         write()
     }
 

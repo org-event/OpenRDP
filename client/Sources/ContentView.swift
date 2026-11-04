@@ -11,7 +11,7 @@ struct ContentView: View {
         NavigationSplitView {
             List(selection: $selection) {
                 ForEach(store.servers) { server in
-                    ServerRow(server: server, session: model.session(for: server))
+                    ServerRow(server: server, session: model.session(for: server), status: model.status(of: server))
                         .tag(server.id)
                         .contextMenu { menu(for: server) }
                 }
@@ -56,16 +56,24 @@ struct ContentView: View {
         Button("Подключиться") { model.connect(server) }
         Button("Изменить…") { editing = server }
         Divider()
+        Button("Разблокировать FileVault") { model.unlock(server) }
+            .disabled(model.status(of: server) != .locked)
+        Button("Разбудить") { model.wake(server) }
+            .disabled(Host.macBytes(server.wakeAddress) == nil)
+        Button("Общий экран") { Host.openScreenSharing(server) }
+        Divider()
         Button("Удалить", role: .destructive) { store.delete(server) }
     }
 }
 
 private struct ServerRow: View {
     let server: Server
+    let status: HostStatus
     @ObservedObject private var sessionBox: SessionBox
 
-    init(server: Server, session: Session?) {
+    init(server: Server, session: Session?, status: HostStatus) {
         self.server = server
+        self.status = status
         sessionBox = SessionBox(session)
     }
 
@@ -78,8 +86,135 @@ private struct ServerRow: View {
                 Text(server.user.isEmpty ? server.address : "\(server.user)@\(server.address)")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Spacer()
+            StatusDot(status: status)
         }
         .padding(.vertical, 2)
+    }
+}
+
+extension HostStatus {
+    var color: Color {
+        switch self {
+        case .unknown: .gray
+        case .online: .green
+        case .locked: .yellow
+        case .offline: .red
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .unknown: "Проверяю…"
+        case .online: "В сети"
+        case .locked: "Ждёт разблокировки FileVault"
+        case .offline: "Не отвечает"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .unknown: ""
+        case .online: "RDP отвечает. Если на Mac никто не вошёл, после подключения будет окно входа."
+        case .locked: "Отвечает только SSH: после включения Mac ждёт пароль FileVault или ещё загружается."
+        case .offline: "Не отвечают ни RDP, ни SSH: Mac выключен, спит или не в этой сети."
+        }
+    }
+}
+
+private struct StatusDot: View {
+    let status: HostStatus
+
+    var body: some View {
+        Circle()
+            .fill(status.color)
+            .frame(width: 9, height: 9)
+            .help(status.title)
+    }
+}
+
+/// The Mac's state on the network and what can be done about it.
+private struct HostPanel: View {
+    @EnvironmentObject private var model: AppModel
+    let server: Server
+
+    private var status: HostStatus { model.status(of: server) }
+    private var activity: HostActivity? { model.activity[server.id] }
+    private var hasMacAccount: Bool { !server.macUser.isEmpty && Keychain.password(for: server.id, .mac) != nil }
+    private var canWake: Bool { Host.macBytes(server.wakeAddress) != nil }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                StatusDot(status: status)
+                Text(status.title).font(.headline)
+                Spacer()
+                if status != .online && status != .unknown {
+                    Button("Проверить") { Task { await model.refreshStatuses() } }
+                }
+            }
+            if !status.explanation.isEmpty {
+                Text(status.explanation).font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let activity { ActivityLine(activity: activity, server: server) }
+            HStack(spacing: 10) {
+                if status == .locked {
+                    Button { model.unlock(server) } label: {
+                        Label("Разблокировать", systemImage: "lock.open")
+                    }
+                    .disabled(!hasMacAccount || activity?.isWaiting == true)
+                }
+                if status == .offline && canWake {
+                    Button { model.wake(server) } label: {
+                        Label("Разбудить", systemImage: "power")
+                    }
+                    .disabled(activity?.isWaiting == true)
+                }
+                if status == .online {
+                    Button { Host.openScreenSharing(server) } label: {
+                        Label("Общий экран", systemImage: "rectangle.on.rectangle")
+                    }
+                    .help("Запасной путь: войти на Mac через «Общий экран», если окно входа по RDP не открывается.")
+                }
+            }
+            if status == .locked && !hasMacAccount {
+                Text("Чтобы разблокировать отсюда, укажите пользователя и пароль Mac в «Изменить…».")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(status.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct ActivityLine: View {
+    @EnvironmentObject private var model: AppModel
+    let activity: HostActivity
+    let server: Server
+
+    var body: some View {
+        switch activity {
+        case .unlocking:
+            HStack { ProgressView().controlSize(.small); Text("Отправляю пароль FileVault по SSH…") }
+        case .starting:
+            HStack { ProgressView().controlSize(.small); Text("Диск разблокирован, macOS загружается. Подключиться можно, когда точка станет зелёной.") }
+        case .waking:
+            HStack { ProgressView().controlSize(.small); Text("Пакет Wake-on-LAN отправлен, жду ответа…") }
+        case .failed(let problem):
+            VStack(alignment: .leading, spacing: 6) {
+                Label(problem, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    if problem == Host.UnlockError.hostKeyChanged.localizedDescription {
+                        Button("Забыть ключ SSH") { model.forgetHostKey(server) }
+                    }
+                    Button("Общий экран") { Host.openScreenSharing(server) }
+                    Button("Скрыть") { model.clearActivity(server) }
+                }
+            }
+        }
     }
 }
 
@@ -109,6 +244,8 @@ private struct ServerDetail: View {
                     Spacer()
                     Button("Изменить…", action: edit)
                 }
+
+                HostPanel(server: server)
 
                 HStack(spacing: 12) {
                     if session?.isRunning == true {
