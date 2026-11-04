@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- The install readies the Mac for being reached only over the network, in the administrator step it already had: start up after a power failure, wake for network access, Remote Login (SSH) and Screen Sharing on, and a firewall rule that lets OpenRDP accept connections instead of asking at the Mac on the first one. `uninstall` removes the firewall rule.
+- The graphical install asks for the Desktop, Documents and Downloads after Accessibility, so copying files through the clipboard does not bring up a macOS prompt in the middle of a remote session.
+
 ## [1.6.0] - 2026-11-04
 
 ### Added

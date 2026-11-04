@@ -58,7 +58,9 @@ In Windows App on a Mac, set the Command key to be sent as Windows: the host the
 
 ## Start at login
 
-Open the release disk image and drag OpenRDP onto Applications. The app is not notarized, so it stays in quarantine and will not open until you run `xattr -dr com.apple.quarantine /Applications/OpenRDP.app` in Terminal. The disk image shows that command. The first launch asks for the RDP name and password, warns before the administrator password, then walks through Screen Recording and Accessibility. The server starts only after both are on.
+Open the release disk image and drag OpenRDP onto Applications. The app is not notarized, so it stays in quarantine and will not open until you run `xattr -dr com.apple.quarantine /Applications/OpenRDP.app` in Terminal. The disk image shows that command. The first launch asks for the RDP name and password, warns before the administrator password, then walks through Screen Recording and Accessibility. The server starts only after both are on. Last, macOS asks for the Desktop, Documents and Downloads, which copying files through the clipboard needs; saying no leaves everything else working.
+
+The administrator step also readies the Mac for being reached only over the network: it starts up by itself after a power failure (`pmset autorestart`), wakes for network access (`womp`), Remote Login (SSH) and Screen Sharing are on, and the application firewall lets OpenRDP accept connections. SSH is how OpenRDP Client unlocks FileVault after a power cut, and Screen Sharing is its fallback. `uninstall` removes the firewall rule and leaves the rest, which are the Mac's own settings.
 
 From a terminal, the same install is:
 
