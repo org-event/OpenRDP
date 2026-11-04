@@ -109,6 +109,28 @@ impl Screen {
         })
     }
 
+    /// A virtual display just set to `mode`. macOS updates the display's
+    /// bounds at once but reports the old mode's pixel width for a while, so
+    /// a Retina mode read back right after the change came out at 1x: half
+    /// the resolution, and a picture the client did not scale.
+    pub fn of_virtual(display_id: u32, mode: Mode) -> anyhow::Result<Self> {
+        let bounds = CGDisplayBounds(display_id);
+        let (points_w, points_h) = mode.points();
+        if (bounds.size.width, bounds.size.height) != (f64::from(points_w), f64::from(points_h)) {
+            // The mode did not take: describe what the display has.
+            return Self::of_display(display_id, true);
+        }
+        Ok(Self {
+            display_id,
+            desktop: (
+                u16::try_from(mode.width & !1).context("display too wide")?,
+                u16::try_from(mode.height & !1).context("display too tall")?,
+            ),
+            origin: (bounds.origin.x, bounds.origin.y),
+            scale: if mode.hidpi { 2.0 } else { 1.0 },
+        })
+    }
+
     /// Encoded frame size: the desktop rounded up to whole 16x16 macroblocks.
     fn surface(&self) -> (u16, u16) {
         (
@@ -363,7 +385,7 @@ impl MacDisplay {
                 id
             }),
         };
-        let screen = result.and_then(|id| Screen::of_display(id, true));
+        let screen = result.and_then(|id| Screen::of_virtual(id, mode));
         drop(slot);
         match screen {
             Ok(screen) => self.shared.screen.set(screen),
@@ -775,6 +797,7 @@ impl Pipeline {
         let mut last: Option<Frame> = None;
         let mut frames: u64 = 0;
         let mut skipped: u64 = 0;
+        let mut failures: u64 = 0;
         let mut stalls: u64 = 0;
         let mut encode_time = Duration::ZERO;
         let mut bytes: u64 = 0;
@@ -891,9 +914,20 @@ impl Pipeline {
                 None => continue,
             };
 
+            // The low-latency encoder drops a forced keyframe it cannot fit in
+            // the bitrate, and at the adaptive floor a large one rarely fits:
+            // AVC444 then asks for another and never recovers. A keyframe goes
+            // out at the full bitrate, and the rate returns after it.
+            let boost = need_keyframe && rate.current() < self.config.bitrate;
+            if boost {
+                video.set_bitrate(self.config.bitrate);
+            }
             let encode_started = Instant::now();
             let encoded = video.encode(&frame, need_keyframe);
             encode_time += encode_started.elapsed();
+            if boost {
+                video.set_bitrate(rate.current());
+            }
             let encoded = match encoded {
                 Ok(Some(encoded)) => encoded,
                 // Rate control skipped it; encode it again unless a newer one
@@ -904,12 +938,19 @@ impl Pipeline {
                     continue;
                 }
                 Err(err) => {
-                    warn!(%err, "encode failed");
+                    failures += 1;
+                    if failures == 1 {
+                        warn!(%err, "encode failed");
+                    }
                     need_keyframe = true;
                     slot.restore(frame);
                     continue;
                 }
             };
+            if failures > 1 {
+                warn!(failures, "encoding recovered");
+            }
+            failures = 0;
             if encoded.keyframe() {
                 debug!(bytes = encoded.bytes(), "keyframe");
             }

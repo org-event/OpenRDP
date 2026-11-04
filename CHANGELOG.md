@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- A large AVC444 session (FreeRDP full screen at 4096×2560) could fall to under one frame a second with a garbled picture once the adaptive bitrate had come down. The low-latency encoder drops a forced keyframe that does not fit the bitrate, an AVC444 view without its keyframe makes the server ask for another, and at the floor the next one is dropped too. Keyframes now go out at the full bitrate, and the adaptive rate returns after them. The log says once that encoding failed and how many frames it took to recover, instead of a line per frame.
+- A Retina session could come up at half the resolution, a picture the client did not scale, when the virtual display changed mode during the connection: macOS reports the old mode's pixel width for a moment after the change. The server now describes the virtual display from the mode it set.
+
 ## [1.6.2] - 2026-11-04
 
 ### Fixed

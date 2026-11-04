@@ -109,7 +109,7 @@ impl Mode {
         }
     }
 
-    fn points(self) -> (u32, u32) {
+    pub fn points(self) -> (u32, u32) {
         if self.hidpi {
             (self.width / 2, self.height / 2)
         } else {
