@@ -280,9 +280,12 @@ impl CliprdrBackend for MacClipboard {
         if let Some(id) = find(&|f| f.id() == ClipboardFormatId::CF_UNICODETEXT) {
             queue.push_back((Fetch::Text, id));
         }
+        // Windows names it "PNG", FreeRDP by its mime type.
         let png = find(&|f| {
-            f.name()
-                .is_some_and(|n| n.value().eq_ignore_ascii_case(PNG_NAME))
+            f.name().is_some_and(|n| {
+                n.value().eq_ignore_ascii_case(PNG_NAME)
+                    || n.value().eq_ignore_ascii_case("image/png")
+            })
         });
         let dib = find(&|f| f.id() == ClipboardFormatId::CF_DIBV5)
             .or_else(|| find(&|f| f.id() == ClipboardFormatId::CF_DIB));

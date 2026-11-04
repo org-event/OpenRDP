@@ -15,6 +15,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- A screenshot copied on the client Mac would not paste on the server: FreeRDP offered it as a bitmap but could not produce one, since the Mac pasteboard holds PNG and WinPR was built without PNG support. The client's FreeRDP is now built with libpng 1.6.59 and `WINPR_UTILS_IMAGE_PNG`. The server also takes FreeRDP's `image/png` format as it is, not only Windows' `PNG`.
+- OpenRDP Client and its session showed two identical icons in the Dock. While a session is open the client now leaves the Dock to the session window; opening the client again brings it back.
 - AVC444 to FreeRDP fell apart between keyframes, at any size: grey and smeared blocks that a window resize cleared for a moment. The server encoded the main and auxiliary views as two H.264 streams, which suits clients that decode each view on its own, but FreeRDP runs both through one decoder, so each view's P-frames referred to the other view's last picture. FreeRDP clients now get both views from one encoder, main then auxiliary; others keep two streams.
 
 ## [1.6.4] - 2026-11-04
