@@ -100,6 +100,11 @@ const T = ru ? {
   removeConfirm: "Удалить всё? macOS спросит пароль администратора.", removeGo: "Удалить OpenRDP", removing: "Удаляю…",
   removed: "OpenRDP удалён", removedText: "Файлы перенесены в Корзину. Окно можно закрыть.", close: "Закрыть",
   saved: "Сохранено", added: "Аккаунт добавлен", deleted: "Аккаунт удалён",
+  updates: "Обновления", checkUpdates: "Проверить обновления", checkingUpdates: "Проверяю обновления…",
+  upToDate: v => `Установлена последняя версия, ${v}`, newer: v => `Доступна версия ${v.replace(/^v/, "")}`,
+  install: "Установить", installing: "Скачиваю и устанавливаю…",
+  installed: v => `Установлена ${v.replace(/^v/, "")}. Сервер перезапущен, окно откроется заново.`,
+  updateHint: "Сервер и сам проверяет обновления раз в шесть часов.",
 } : {
   running: "The server is running and waiting for connections", stopped: "The server is not running",
   accounts: "RDP accounts", accountsHint: "Changes apply from the next connection",
@@ -116,6 +121,11 @@ const T = ru ? {
   removeConfirm: "Remove everything? macOS will ask for an administrator password.", removeGo: "Remove OpenRDP", removing: "Removing…",
   removed: "OpenRDP is removed", removedText: "The files are in the Trash. You can close this window.", close: "Close",
   saved: "Saved", added: "Account added", deleted: "Account removed",
+  updates: "Updates", checkUpdates: "Check for updates", checkingUpdates: "Checking for updates…",
+  upToDate: v => `This is the latest version, ${v}`, newer: v => `Version ${v.replace(/^v/, "")} is available`,
+  install: "Install", installing: "Downloading and installing…",
+  installed: v => `${v.replace(/^v/, "")} is installed. The server restarted; the window opens again.`,
+  updateHint: "The server also checks for updates every six hours.",
 };
 const SEP = "\u001f";
 const send = (...parts) => window.webkit.messageHandlers.openrdp.postMessage(parts.join(SEP));
@@ -125,6 +135,7 @@ let editing = null;     // { kind: "add" | "password" | "rename" | "remove", nam
 let checks = null;      // null while checking
 let removal = "idle";   // idle | confirm | working
 let pendingToast = null;
+let update = { phase: "idle" };  // idle | checking | current | newer | installing | installed | error
 
 function toast(text) {
   const t = document.getElementById("toast");
@@ -144,6 +155,13 @@ const app = {
     if (pendingToast) { toast(pendingToast); pendingToast = null; }
   },
   checks(list) { checks = list; render(); },
+  update(u) {
+    if (u.error) update = { phase: "error", text: u.error };
+    else if (u.installed) { update = { phase: "installed", tag: u.installed }; setTimeout(() => send("quit"), 2500); }
+    else if (u.newer) update = { phase: "newer", tag: u.newer };
+    else update = { phase: "current" };
+    render();
+  },
   removed(problem) {
     if (problem) { removal = "idle"; render(); showError(problem, "remove-error"); return; }
     document.getElementById("main").innerHTML = `<div class="done"><img src="data:image/png;base64,{{ICON}}" width="96" height="96" style="filter:grayscale(1);opacity:.6"><h1>${T.removed}</h1><p class="muted">${T.removedText}</p><button class="primary" onclick="send('quit')">${T.close}</button></div>`;
@@ -187,6 +205,19 @@ function submitForm(e) {
 
 function edit(kind, name) { editing = { kind, name }; render(); }
 
+function updateBlock() {
+  const check = `<button onclick="update={phase:'checking'};render();send('update-check')">${T.checkUpdates}</button>`;
+  switch (update.phase) {
+    case "checking": return `<div class="row"><span class="spinner"></span>${T.checkingUpdates}</div>`;
+    case "current": return `<div class="row"><div class="mark ok">✓</div><div class="grow">${esc(T.upToDate(state.version))}</div>${check}</div>`;
+    case "newer": return `<div class="row"><div class="mark warn">↑</div><div class="grow name">${esc(T.newer(update.tag))}</div><button class="primary" onclick="update={phase:'installing',tag:update.tag};render();send('update-install')">${T.install}</button></div>`;
+    case "installing": return `<div class="row"><span class="spinner"></span>${T.installing}</div>`;
+    case "installed": return `<div class="row"><div class="mark ok">✓</div><div class="grow">${esc(T.installed(update.tag))}</div></div>`;
+    case "error": return `<div class="row"><div class="mark fail">✕</div><div class="grow">${esc(update.text)}</div>${check}</div>`;
+    default: return `<div class="row"><div class="grow">OpenRDP ${esc(state.version)}</div>${check}</div>`;
+  }
+}
+
 function render() {
   const rows = state.accounts.map(a => {
     const open = editing && editing.name === a && editing.kind !== "add";
@@ -212,6 +243,8 @@ function render() {
     <header><img src="data:image/png;base64,{{ICON}}" alt="">
       <div><h1>OpenRDP <span class="muted" style="font-weight:400;font-size:15px">${esc(state.version)}</span></h1>
       <div class="status"><span class="dot ${state.running ? "on" : "off"}"></span>${state.running ? T.running : T.stopped}</div></div></header>
+    <div class="card">${updateBlock()}</div>
+    <div class="muted" style="margin:6px 4px 0;font-size:12px">${T.updateHint}</div>
     <h2><span>${T.accounts}</span><button class="link" onclick='edit("add", "")'>＋ ${T.add}</button></h2>
     <div class="card">${editing && editing.kind === "add" ? accountForm() : ""}${rows || `<div class="placeholder">${T.none}</div>`}</div>
     <div class="muted" style="margin:6px 4px 0;font-size:12px">${T.accountsHint}</div>
