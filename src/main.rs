@@ -310,12 +310,24 @@ fn gui_install() -> anyhow::Result<()> {
 
 /// Permission prompts belong to the signed app. A copy dragged from the disk
 /// image only collects the account, then hands the rest over.
+///
+/// The installed app goes through Launch Services (`open`), not as a child of
+/// this process: macOS holds the parent responsible for a child, so a child
+/// would ask for, and see, the grants of this unsigned copy, and the server
+/// launchd starts would have none.
 fn handoff_setup() -> anyhow::Result<()> {
     if service::running_from_app() {
         return setup::run();
     }
-    let status = std::process::Command::new(service::installed_binary()?)
-        .arg("--setup")
+    let binary = service::installed_binary()?;
+    let app = binary
+        .ancestors()
+        .nth(3)
+        .context("the installed app bundle")?;
+    let status = std::process::Command::new("/usr/bin/open")
+        .args(["-W", "-n", "-a"])
+        .arg(app)
+        .args(["--args", "--setup"])
         .status()
         .context("continue the install")?;
     if status.success() {
@@ -331,13 +343,62 @@ fn console_user() -> String {
 
 fn init_tracing() {
     use std::io::IsTerminal as _;
-    tracing_subscriber::fmt()
-        .with_ansi(std::io::stdout().is_terminal())
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "openrdp=info,warn".into()),
+    use tracing_subscriber::Layer as _;
+    use tracing_subscriber::layer::SubscriberExt as _;
+    use tracing_subscriber::util::SubscriberInitExt as _;
+    let env = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "openrdp=info,warn".into());
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(std::io::stdout().is_terminal())
+                .with_filter(env)
+                .with_filter(SkipProbes),
         )
         .init();
+}
+
+/// Drops IronRDP's error for a connection closed before its first frame.
+/// OpenRDP Client opens and closes the port every few seconds to show
+/// whether the Mac is up, and each check would log an error.
+struct SkipProbes;
+
+impl<S> tracing_subscriber::layer::Filter<S> for SkipProbes {
+    fn enabled(
+        &self,
+        _: &tracing::Metadata<'_>,
+        _: &tracing_subscriber::layer::Context<'_, S>,
+    ) -> bool {
+        true
+    }
+
+    fn event_enabled(
+        &self,
+        event: &tracing::Event<'_>,
+        _: &tracing_subscriber::layer::Context<'_, S>,
+    ) -> bool {
+        !is_probe(event)
+    }
+}
+
+fn is_probe(event: &tracing::Event<'_>) -> bool {
+    struct Text(String);
+    impl tracing::field::Visit for Text {
+        fn record_debug(&mut self, _: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            use std::fmt::Write as _;
+            let _ = write!(self.0, "{value:?} ");
+        }
+    }
+    if !event.metadata().target().starts_with("ironrdp_server") {
+        return false;
+    }
+    let mut text = Text(String::new());
+    event.record(&mut text);
+    probe_error(&text.0)
+}
+
+fn probe_error(text: &str) -> bool {
+    text.contains("accept_begin failed") && text.contains("UnexpectedEof")
 }
 
 async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
@@ -475,6 +536,15 @@ fn check_permissions() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_port_check_is_not_an_error_but_a_failed_logon_is() {
+        let probe = r#"Error { context: "accept_begin failed", kind: Connector(Error { context: "read frame by hint", kind: Custom, source: Some(Custom { kind: UnexpectedEof, error: "not enough bytes" }) }), source: None }"#;
+        assert!(probe_error(probe));
+        assert!(!probe_error(
+            r#"Error { context: "accept_finalize failed", kind: Connector(Error { context: "invalid credentials" }) }"#
+        ));
+    }
+
     use ironrdp_server::ServerErrorExt as _;
 
     use super::*;
