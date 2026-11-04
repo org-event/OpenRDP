@@ -17,11 +17,11 @@ unsafe extern "C" {
 pub fn run() -> anyhow::Result<()> {
     let ru = dialog::russian();
     if capture_granted() && accessibility_granted(false) {
-        if !crate::service::agent_running() {
+        let started = !crate::service::agent_running();
+        if started {
             crate::service::start_agent()?;
-            return dialog::note(done(ru));
         }
-        return dialog::note(already_ready(ru));
+        return manage_accounts(ru, if started { done(ru) } else { already_ready(ru) });
     }
 
     let was_running = crate::service::agent_running();
@@ -37,7 +37,7 @@ pub fn run() -> anyhow::Result<()> {
     } else {
         crate::service::start_agent()?;
     }
-    dialog::note(done(ru))
+    manage_accounts(ru, done(ru))
 }
 
 fn guide_screen(
@@ -132,8 +132,187 @@ fn ask_for_folders() {
     }
 }
 
+/// Whether Screen Recording is on for this app. macOS answers a running
+/// process from what it saw at launch, so a switch turned on during the
+/// install reads as off until the app restarts: ask a new process instead.
 pub(crate) fn capture_granted() -> bool {
+    let Ok(exe) = std::env::current_exe() else {
+        return capture_granted_here();
+    };
+    Command::new(exe)
+        .arg("--check-capture")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map_or_else(|_| capture_granted_here(), |status| status.success())
+}
+
+/// This process's own view, fixed at its launch.
+pub(crate) fn capture_granted_here() -> bool {
     objc2_core_graphics::CGPreflightScreenCaptureAccess()
+}
+
+/// The RDP accounts, with buttons to add, change and remove them. Changes
+/// apply from the next connection; the server rereads the file.
+fn manage_accounts(ru: bool, status: &str) -> anyhow::Result<()> {
+    let path = crate::users::path()?;
+    let mut problem: Option<String> = None;
+    loop {
+        let accounts = crate::users::load(&path)?.unwrap_or_default();
+        let names: Vec<String> = accounts.iter().map(|a| a.name.clone()).collect();
+        let mut message = format!("{status}\n\n{}", accounts_heading(ru));
+        for name in &names {
+            message.push_str(&format!("\n•  {name}"));
+        }
+        if names.is_empty() {
+            message.push_str(if ru { "\n(нет)" } else { "\n(none)" });
+        }
+        if let Some(problem) = problem.take() {
+            message.push_str(&format!("\n\n⚠️ {problem}"));
+        }
+        let (done_b, add_b, edit_b) = if ru {
+            ("Готово", "Добавить…", "Изменить…")
+        } else {
+            ("Done", "Add…", "Change…")
+        };
+        let mut buttons = vec![add_b, done_b];
+        if !names.is_empty() {
+            buttons.insert(1, edit_b);
+        }
+        let Some(pressed) = dialog::choose_button(&message, &buttons)? else {
+            return Ok(());
+        };
+        let result = if pressed == add_b {
+            add_account(ru, &path)
+        } else if pressed == edit_b {
+            edit_account(ru, &path, &names)
+        } else {
+            return Ok(());
+        };
+        if let Err(err) = result {
+            problem = Some(format!("{err:#}"));
+        }
+    }
+}
+
+fn add_account(ru: bool, path: &std::path::Path) -> anyhow::Result<()> {
+    let Some(name) = dialog::ask(dialog::account_prompt(), false, "")? else {
+        return Ok(());
+    };
+    let Some(password) = ask_new_password(ru, &name)? else {
+        return Ok(());
+    };
+    let mut accounts = crate::users::load(path)?.unwrap_or_default();
+    if !crate::users::set(&mut accounts, name.trim(), &password)? {
+        anyhow::bail!(if ru {
+            "такой аккаунт уже был: у него теперь новый пароль"
+        } else {
+            "that account existed: it has the new password now"
+        });
+    }
+    crate::users::save(path, &accounts)
+}
+
+fn edit_account(ru: bool, path: &std::path::Path, names: &[String]) -> anyhow::Result<()> {
+    let name = match names {
+        [only] => only.clone(),
+        _ => {
+            let prompt = if ru {
+                "Какой аккаунт изменить?"
+            } else {
+                "Which account?"
+            };
+            let ok = if ru { "Выбрать" } else { "Choose" };
+            let Some(name) = dialog::choose_item(prompt, names, ok)? else {
+                return Ok(());
+            };
+            name
+        }
+    };
+    let actions: Vec<String> = if ru {
+        vec![
+            "Сменить пароль".into(),
+            "Переименовать".into(),
+            "Удалить".into(),
+        ]
+    } else {
+        vec![
+            "Change the password".into(),
+            "Rename".into(),
+            "Remove".into(),
+        ]
+    };
+    let prompt = if ru {
+        format!("Аккаунт {name}")
+    } else {
+        format!("Account {name}")
+    };
+    let ok = if ru { "Дальше" } else { "Next" };
+    let Some(action) = dialog::choose_item(&prompt, &actions, ok)? else {
+        return Ok(());
+    };
+    let mut accounts = crate::users::load(path)?.unwrap_or_default();
+    if action == actions[0] {
+        let Some(password) = ask_new_password(ru, &name)? else {
+            return Ok(());
+        };
+        crate::users::set(&mut accounts, &name, &password)?;
+    } else if action == actions[1] {
+        let prompt = if ru { "Новое имя" } else { "New name" };
+        let Some(new) = dialog::ask(prompt, false, &name)? else {
+            return Ok(());
+        };
+        crate::users::rename(&mut accounts, &name, new.trim())?;
+    } else {
+        let question = if ru {
+            format!(
+                "Удалить аккаунт {name}? Открытый сеанс продолжится, но войти с ним больше нельзя."
+            )
+        } else {
+            format!(
+                "Remove the account {name}? An open session keeps running, but it cannot sign in again."
+            )
+        };
+        let button = if ru { "Удалить" } else { "Remove" };
+        if !dialog::proceed(&question, button)? {
+            return Ok(());
+        }
+        crate::users::remove(&mut accounts, &name)?;
+    }
+    crate::users::save(path, &accounts)
+}
+
+/// Asks for a password twice; `None` when cancelled.
+fn ask_new_password(ru: bool, name: &str) -> anyhow::Result<Option<String>> {
+    let first = if ru {
+        format!("Пароль для {name}")
+    } else {
+        format!("Password for {name}")
+    };
+    let Some(password) = dialog::ask(&first, true, "")? else {
+        return Ok(None);
+    };
+    let again = if ru { "Ещё раз" } else { "Again" };
+    let Some(repeat) = dialog::ask(again, true, "")? else {
+        return Ok(None);
+    };
+    anyhow::ensure!(
+        password == repeat,
+        if ru {
+            "пароли не совпали"
+        } else {
+            "the passwords differ"
+        }
+    );
+    Ok(Some(password))
+}
+
+fn accounts_heading(ru: bool) -> &'static str {
+    if ru {
+        "Аккаунты для входа по RDP (изменения действуют со следующего подключения):"
+    } else {
+        "Accounts for signing in over RDP (changes apply from the next connection):"
+    }
 }
 
 pub(crate) fn request_capture() {
@@ -162,9 +341,9 @@ fn open_privacy(anchor: &str) {
 
 fn screen_intro(ru: bool) -> &'static str {
     if ru {
-        "Дальше запись экрана. В окне macOS нажмите «Разрешить». Если откроется список, включите переключатель у OpenRDP. Без этого картинки не будет."
+        "Дальше запись экрана. В окне macOS нажмите «Разрешить». Если откроется список, включите переключатель у OpenRDP. Без этого картинки не будет. Если macOS предложит «Завершить и открыть снова», соглашайтесь: установка продолжится сама."
     } else {
-        "Next is Screen Recording. In the macOS window, click Allow. If a list opens instead, turn on the OpenRDP switch. There is no picture without it."
+        "Next is Screen Recording. In the macOS window, click Allow. If a list opens instead, turn on the OpenRDP switch. There is no picture without it. If macOS offers to Quit & Reopen, accept: the install carries on by itself."
     }
 }
 
@@ -202,9 +381,9 @@ fn folders_intro(ru: bool) -> &'static str {
 
 fn done(ru: bool) -> &'static str {
     if ru {
-        "Готово. Запись экрана и универсальный доступ включены, сервер запущен. Подключайтесь именем и паролем, которые задали в начале. Больше ничего включать не нужно."
+        "Готово. Запись экрана и универсальный доступ включены, сервер запущен."
     } else {
-        "Done. Screen Recording and Accessibility are on, and the server is running. Connect with the name and password you entered at the start. Nothing else needs to be turned on."
+        "Done. Screen Recording and Accessibility are on, and the server is running."
     }
 }
 
@@ -218,9 +397,9 @@ fn cancelled(ru: bool) -> &'static str {
 
 fn already_ready(ru: bool) -> &'static str {
     if ru {
-        "OpenRDP уже установлен. Запись экрана и универсальный доступ включены, больше ничего не нужно."
+        "OpenRDP установлен и работает. Запись экрана и универсальный доступ включены."
     } else {
-        "OpenRDP is already installed. Screen Recording and Accessibility are on, and nothing else is needed."
+        "OpenRDP is installed and running. Screen Recording and Accessibility are on."
     }
 }
 
@@ -319,7 +498,8 @@ mod tests {
         assert!(accessibility_intro(true).contains("Кнопки «Разрешить» нет"));
         assert!(accessibility_intro(true).contains("мышь"));
         assert!(accessibility_intro(true).contains("Другие пункты включать не нужно"));
-        assert!(done(true).contains("Больше ничего включать не нужно"));
+        assert!(done(true).contains("сервер запущен"));
+        assert!(screen_intro(true).contains("Завершить и открыть снова"));
         assert!(screen_still(true).contains("Проверить"));
         assert!(cancelled(true).contains("снова"));
     }

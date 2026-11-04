@@ -104,6 +104,35 @@ fn check_password(password: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Removes the account `name`. The last one stays, or nobody could connect.
+pub fn remove(accounts: &mut Vec<Account>, name: &str) -> anyhow::Result<()> {
+    let index = accounts
+        .iter()
+        .position(|a| same_name(&a.name, name))
+        .with_context(|| format!("there is no account {name}"))?;
+    ensure!(
+        accounts.len() > 1,
+        "{name} is the last account; add another first"
+    );
+    accounts.remove(index);
+    Ok(())
+}
+
+/// Renames the account `old` to `new`, keeping its password.
+pub fn rename(accounts: &mut [Account], old: &str, new: &str) -> anyhow::Result<()> {
+    check_name(new)?;
+    ensure!(
+        same_name(old, new) || !accounts.iter().any(|a| same_name(&a.name, new)),
+        "there is already an account {new}"
+    );
+    let account = accounts
+        .iter_mut()
+        .find(|a| same_name(&a.name, old))
+        .with_context(|| format!("there is no account {old}"))?;
+    account.name = new.to_owned();
+    Ok(())
+}
+
 /// Adds the account, or changes its password; `true` when it is new.
 pub fn set(accounts: &mut Vec<Account>, name: &str, password: &str) -> anyhow::Result<bool> {
     check_name(name)?;
@@ -215,29 +244,14 @@ pub fn run(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
         }
         Some("remove") => {
             let name: String = args.free_from_str().context("which account?")?;
-            let before = accounts.len();
-            accounts.retain(|a| !same_name(&a.name, &name));
-            ensure!(accounts.len() < before, "there is no account {name}");
-            ensure!(
-                !accounts.is_empty(),
-                "{name} is the last account; add another first"
-            );
+            remove(&mut accounts, &name)?;
             save(&path, &accounts)?;
             println!("Removed {name}.");
         }
         Some("rename") => {
             let old: String = args.free_from_str().context("which account?")?;
             let new: String = args.free_from_str().context("the new name?")?;
-            check_name(&new)?;
-            ensure!(
-                same_name(&old, &new) || !accounts.iter().any(|a| same_name(&a.name, &new)),
-                "there is already an account {new}"
-            );
-            let account = accounts
-                .iter_mut()
-                .find(|a| same_name(&a.name, &old))
-                .with_context(|| format!("there is no account {old}"))?;
-            account.name = new.clone();
+            rename(&mut accounts, &old, &new)?;
             save(&path, &accounts)?;
             println!("Renamed {old} to {new}.");
         }
@@ -310,6 +324,21 @@ mod tests {
         assert_eq!(accounts[0].password, "b");
         assert!(set(&mut accounts, "sergey", "c").unwrap());
         assert_eq!(accounts.len(), 2);
+    }
+
+    #[test]
+    fn remove_keeps_the_last_account_and_rename_keeps_the_password() {
+        let mut accounts = Vec::new();
+        set(&mut accounts, "ivan", "a").unwrap();
+        set(&mut accounts, "sergey", "b").unwrap();
+        assert!(rename(&mut accounts, "Sergey", "ivan").is_err());
+        rename(&mut accounts, "Sergey", "serg").unwrap();
+        assert_eq!(accounts[1].name, "serg");
+        assert_eq!(accounts[1].password, "b");
+        assert!(remove(&mut accounts, "nobody").is_err());
+        remove(&mut accounts, "IVAN").unwrap();
+        assert_eq!(accounts.len(), 1);
+        assert!(remove(&mut accounts, "serg").is_err());
     }
 
     #[test]
