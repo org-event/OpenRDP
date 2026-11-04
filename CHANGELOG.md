@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- AVC444 by default stops at 3072×1920; a larger session, such as FreeRDP in full screen on a Retina MacBook (4096×2560), gets AVC420 and goes back to AVC444 when it shrinks. At 4096×2560 the client decodes two H.264 streams a frame and rebuilds full chroma in software: an Intel MacBook fell a minute behind (acknowledgements after 30 to 60 s), dropped frames and showed a garbled picture. `--avc444` still sends AVC444 at any size.
+
 ## [1.6.3] - 2026-11-04
 
 ### Added
