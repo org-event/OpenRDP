@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-04
+
 ### Added
 
 - OpenRDP Client shows which saved Macs are up: a green dot when RDP answers, yellow when only SSH does (FileVault waiting after a power cut, or a Mac still starting), red when nothing does. Checked every few seconds.
@@ -176,7 +178,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.5.2...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/org-event/OpenRDP/compare/v1.5.2...v1.6.0
 [1.5.2]: https://github.com/org-event/OpenRDP/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/org-event/OpenRDP/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/org-event/OpenRDP/compare/v1.4.0...v1.5.0
