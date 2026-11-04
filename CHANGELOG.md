@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-11-04
+
 ### Added
 
 - The install readies the Mac for being reached only over the network, in the administrator step it already had: start up after a power failure, wake for network access, Remote Login (SSH) and Screen Sharing on, and a firewall rule that lets OpenRDP accept connections instead of asking at the Mac on the first one. `uninstall` removes the firewall rule.
@@ -183,7 +185,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/org-event/OpenRDP/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/org-event/OpenRDP/compare/v1.5.2...v1.6.0
 [1.5.2]: https://github.com/org-event/OpenRDP/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/org-event/OpenRDP/compare/v1.5.0...v1.5.1
