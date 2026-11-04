@@ -4,11 +4,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.6.3] - 2026-11-04
+
 ### Added
 
 - Opening the installed OpenRDP shows the RDP accounts, with buttons to add one, change a password, rename or remove one, instead of only saying that it is installed.
 - "Check the server" in the installed app, and `openrdp check` in a terminal: the server, the port, the permissions, the accounts, the login-window service and the Mac's settings for remote access, each marked as fine or not.
 - "Remove OpenRDP from this Mac" in the installed app: the services, the app, the accounts, the certificate, the logs, the permissions and the copy in Applications, with the files moved to the Trash. Uninstalling the login-window service now also removes its log and its empty directory.
+- OpenRDP Client in full screen: the pointer at the top edge brings down the menu bar and the session window's title bar, with the close button and the green one to leave full screen, as in any Mac app. FreeRDP enters full screen itself, and SDL then hid them for good.
 
 ### Fixed
 
@@ -205,7 +208,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.2...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.3...HEAD
+[1.6.3]: https://github.com/org-event/OpenRDP/compare/v1.6.2...v1.6.3
 [1.6.2]: https://github.com/org-event/OpenRDP/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/org-event/OpenRDP/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/org-event/OpenRDP/compare/v1.5.2...v1.6.0
