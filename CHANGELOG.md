@@ -9,6 +9,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - "Check for updates" in the installed OpenRDP's window: it says whether a newer release is out and installs it on the spot, as the six-hourly check would, then opens the window of the new build.
 - OpenRDP Client updates itself: it checks for a newer client at launch and from "Check for updates" in Settings, and "Update" downloads the release's disk image, checks it against the release's SHA-256, puts the new app in place of the running one and starts it. With a session open it asks to close it first.
 
+### Changed
+
+- AVC444 to FreeRDP clients at any size again: the 3072×1920 limit of 1.6.4 was put in for what turned out to be the two-stream bug below.
+
 ### Fixed
 
 - AVC444 to FreeRDP fell apart between keyframes, at any size: grey and smeared blocks that a window resize cleared for a moment. The server encoded the main and auxiliary views as two H.264 streams, which suits clients that decode each view on its own, but FreeRDP runs both through one decoder, so each view's P-frames referred to the other view's last picture. FreeRDP clients now get both views from one encoder, main then auxiliary; others keep two streams.
