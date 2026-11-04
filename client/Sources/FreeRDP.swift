@@ -145,6 +145,11 @@ final class Session: ObservableObject, Identifiable {
         if passSystemShortcuts, let lib = Bundle.main.url(forResource: "libopenrdp-keyboard", withExtension: "dylib") {
             env["DYLD_INSERT_LIBRARIES"] = lib.path
         }
+        // FreeRDP enters full screen with SDL_SetWindowFullscreen, and SDL then
+        // hides the menu bar for good. With this the pointer at the top edge
+        // brings down the menu bar and the window's title bar, as in any Mac
+        // app in full screen: the green button leaves it, the red one closes.
+        env["SDL_VIDEO_MAC_FULLSCREEN_MENU_VISIBILITY"] = "1"
         process.environment = env
         let input = Pipe()
         process.standardInput = input
