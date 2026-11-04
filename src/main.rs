@@ -47,7 +47,9 @@ USAGE:
                       the RDP accounts; see openrdp user --help
   openrdp                  without a terminal: ask for the account, then for
                            the administrator password, then Screen Recording and
-                           Accessibility, and start only after both are on
+                           Accessibility, and start only after both are on;
+                           opened again, it lists the RDP accounts to add,
+                           change or remove
   openrdp uninstall    remove the agent, the app and the login-window service
 
 OPTIONS:
@@ -269,6 +271,10 @@ fn main() -> anyhow::Result<()> {
         Some("user") => {
             argv.remove(0);
             return users::run(argv);
+        }
+        // The install's Screen Recording check, in a process of its own.
+        Some("--check-capture") => {
+            std::process::exit(if setup::capture_granted_here() { 0 } else { 1 });
         }
         Some("--setup") => {
             init_tracing();
@@ -516,7 +522,7 @@ fn is_addr_in_use(err: &ServerError) -> bool {
 /// for the missing ones. The graphical install has already walked through them;
 /// a terminal install still hits these prompts.
 fn check_permissions() {
-    let screen_recording = setup::capture_granted();
+    let screen_recording = setup::capture_granted_here();
     if !screen_recording {
         warn!("Screen Recording permission missing; requesting it (restart after granting)");
         setup::request_capture();
