@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- AVC420 is the default again for every client; AVC444 only with `--avc444`. FreeRDP needs both AVC444 views as one stream, since it decodes them with one decoder, and the Mac's hardware encoder refers each frame only to the one before, which is the other view: on a 4096×2560 session AVC444 took 66 ms a frame and came out softer than AVC420. The encoder offers no way to refer a view to its own previous picture.
+
 ## [1.6.5] - 2026-11-04
 
 ### Added

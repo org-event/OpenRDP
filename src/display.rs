@@ -47,10 +47,11 @@ const MAX_FRAMES_IN_FLIGHT: u32 = 3;
 /// Windows App for Mac negotiates it, then drops the connection on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Avc444 {
+    /// AVC420 only, the default. FreeRDP decodes both AVC444 views with one
+    /// decoder, so it needs them as one stream, and the Mac's encoder refers
+    /// each frame only to the one before, the other view: AVC444 came out
+    /// softer and slower than AVC420.
     Off,
-    /// For FreeRDP-based clients, known by the advanced input channel they
-    /// open; the Microsoft clients do not have it.
-    Auto,
     On,
 }
 
@@ -837,7 +838,6 @@ impl Pipeline {
                     server.supports_avc444()
                         && match self.config.avc444 {
                             Avc444::Off => false,
-                            Avc444::Auto => self.shared.advanced_input.load(Ordering::Acquire),
                             Avc444::On => true,
                         }
                 })

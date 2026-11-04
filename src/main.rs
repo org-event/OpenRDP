@@ -62,10 +62,11 @@ OPTIONS:
   --fps <N>           capture frame rate cap [default: 60]
   --bitrate <MBPS>    average H.264 bitrate [default: 20]
   --avc444            send AVC444 to every client that negotiates it: sharper
-                      text and colour edges, about twice the encoding. By
-                      default only FreeRDP-based clients get it: Windows App
-                      for Mac negotiates it, then drops the connection
-  --no-avc444         never send AVC444
+                      colour edges, but the Mac's encoder does both views in
+                      one stream for FreeRDP, so it is softer and slower than
+                      AVC420. Windows App for Mac negotiates it, then drops
+                      the connection. Off by default
+  --no-avc444         never send AVC444 (the default)
   --fixed-size        stream the main display as it is instead of a virtual
                       display sized to the client
   --max-size <WxH>    largest virtual display by area; bigger clients get a
@@ -164,8 +165,7 @@ fn parse_args(args: Vec<std::ffi::OsString>) -> anyhow::Result<Option<Args>> {
         avc444: match (args.contains("--avc444"), args.contains("--no-avc444")) {
             (true, true) => bail!("--avc444 and --no-avc444 contradict each other"),
             (true, false) => display::Avc444::On,
-            (false, true) => display::Avc444::Off,
-            (false, false) => display::Avc444::Auto,
+            (false, _) => display::Avc444::Off,
         },
         fixed_size: args.contains("--fixed-size"),
         max_pixels: args
