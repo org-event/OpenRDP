@@ -1,19 +1,20 @@
-// Renders assets/icon/AppIcon.svg into the formats macOS and GitHub need:
-// AppIcon.icns (all iconset sizes) and the PNGs used by the README.
+// Turns the artwork in assets/icon (server-art.png, client-art.png: square,
+// full-bleed) into macOS app icons: the art goes on the 824×824 rounded tile
+// of the 1024 grid, with the system's drop shadow. Writes, for each of server
+// and client, <name>.icns (every iconset size) and <name>-256.png for the
+// README.
 //
 //   swift scripts/make-icon.swift
-//
-// Needs macOS 14 or later, where NSImage reads SVG.
 
 import AppKit
 
 let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
 let dir = root.appendingPathComponent("assets/icon")
-guard let svg = NSImage(contentsOf: dir.appendingPathComponent("AppIcon.svg")) else {
-    fatalError("cannot read AppIcon.svg")
-}
 
-func png(_ size: Int, to url: URL) throws {
+/// Share of each edge of the art cut away, so the mark fills more of the tile.
+let crop = 0.05
+
+func render(_ art: NSImage, _ size: Int) -> NSBitmapImageRep {
     let rep = NSBitmapImageRep(
         bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8,
         samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
@@ -22,26 +23,53 @@ func png(_ size: Int, to url: URL) throws {
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
     NSGraphicsContext.current?.imageInterpolation = .high
-    svg.draw(in: NSRect(x: 0, y: 0, width: size, height: size))
+
+    let k = CGFloat(size) / 1024
+    let tile = NSRect(x: 100 * k, y: 100 * k, width: 824 * k, height: 824 * k)
+    let shape = NSBezierPath(roundedRect: tile, xRadius: 185 * k, yRadius: 185 * k)
+
+    NSGraphicsContext.saveGraphicsState()
+    let shadow = NSShadow()
+    shadow.shadowOffset = NSSize(width: 0, height: -12 * k)
+    shadow.shadowBlurRadius = 28 * k
+    shadow.shadowColor = NSColor.black.withAlphaComponent(0.4)
+    shadow.set()
+    NSColor.black.setFill()
+    shape.fill()
     NSGraphicsContext.restoreGraphicsState()
+
+    shape.addClip()
+    let w = art.size.width, h = art.size.height
+    let from = NSRect(x: w * crop, y: h * crop, width: w * (1 - 2 * crop), height: h * (1 - 2 * crop))
+    art.draw(in: tile, from: from, operation: .copy, fraction: 1)
+
+    NSGraphicsContext.restoreGraphicsState()
+    return rep
+}
+
+func write(_ rep: NSBitmapImageRep, to url: URL) throws {
     try rep.representation(using: .png, properties: [:])!.write(to: url)
 }
 
-let iconset = FileManager.default.temporaryDirectory.appendingPathComponent("AppIcon.iconset")
-try? FileManager.default.removeItem(at: iconset)
-try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
-for points in [16, 32, 128, 256, 512] {
-    try png(points, to: iconset.appendingPathComponent("icon_\(points)x\(points).png"))
-    try png(points * 2, to: iconset.appendingPathComponent("icon_\(points)x\(points)@2x.png"))
+for name in ["server", "client"] {
+    guard let art = NSImage(contentsOf: dir.appendingPathComponent("\(name)-art.png")) else {
+        fatalError("cannot read \(name)-art.png")
+    }
+    let iconset = FileManager.default.temporaryDirectory.appendingPathComponent("\(name).iconset")
+    try? FileManager.default.removeItem(at: iconset)
+    try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
+    for points in [16, 32, 128, 256, 512] {
+        try write(render(art, points), to: iconset.appendingPathComponent("icon_\(points)x\(points).png"))
+        try write(render(art, points * 2), to: iconset.appendingPathComponent("icon_\(points)x\(points)@2x.png"))
+    }
+
+    let iconutil = Process()
+    iconutil.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
+    iconutil.arguments = ["-c", "icns", iconset.path, "-o", dir.appendingPathComponent("\(name).icns").path]
+    try iconutil.run()
+    iconutil.waitUntilExit()
+    guard iconutil.terminationStatus == 0 else { fatalError("iconutil failed for \(name)") }
+
+    try write(render(art, 256), to: dir.appendingPathComponent("\(name)-256.png"))
+    print("wrote \(name).icns and \(name)-256.png")
 }
-
-let iconutil = Process()
-iconutil.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
-iconutil.arguments = ["-c", "icns", iconset.path, "-o", dir.appendingPathComponent("AppIcon.icns").path]
-try iconutil.run()
-iconutil.waitUntilExit()
-guard iconutil.terminationStatus == 0 else { fatalError("iconutil failed") }
-
-try png(1024, to: dir.appendingPathComponent("AppIcon-1024.png"))
-try png(256, to: dir.appendingPathComponent("AppIcon-256.png"))
-print("wrote AppIcon.icns, AppIcon-1024.png, AppIcon-256.png in \(dir.path)")
