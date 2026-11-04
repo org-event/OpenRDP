@@ -4,7 +4,8 @@
 #
 #   client/build.sh            build
 #   client/build.sh --zip      also pack build/OpenRDP-Client-<version>.zip to copy to another Mac
-#   client/build.sh --dmg      also make build/OpenRDP-Client-<version>.dmg (app + Applications link)
+#   client/build.sh --dmg      also make build/OpenRDP-Client-<version>.dmg, laid out like the
+#                              server's by scripts/make-dmg.sh
 #
 # When client/build-freerdp.sh has been run, its sdl-freerdp and libraries go
 # inside the app (Contents/MacOS and Contents/Frameworks) and the app uses them;
@@ -56,6 +57,11 @@ fi
 
 sed "s/@VERSION@/$version/g" "$here/Resources/Info.plist" > "$app/Contents/Info.plist"
 cp "$root/assets/icon/AppIcon.icns" "$app/Contents/Resources/AppIcon.icns"
+if [[ "${1:-}" == "--dmg" ]]; then
+    # The disk-image window's picture, inside the app so the signature covers it.
+    swift "$root/scripts/dmg-background.swift" \
+        "$app/Contents/Resources/background.png" "OpenRDP Client" > /dev/null
+fi
 
 # Ad-hoc signature: enough to run on this Mac and, after removing quarantine, on another.
 # Inner code first, the app last.
@@ -72,14 +78,7 @@ if [[ -e "$app/Contents/MacOS/sdl-freerdp" ]]; then lipo -info "$app/Contents/Ma
 echo "built $app"
 
 if [[ "${1:-}" == "--dmg" ]]; then
-    dmg="$out/OpenRDP-Client-$version.dmg"
-    stage="$out/dmg"
-    rm -rf "$stage" "$dmg" && mkdir -p "$stage"
-    cp -R "$app" "$stage/"
-    ln -s /Applications "$stage/Applications"
-    hdiutil create -quiet -volname "OpenRDP Client" -srcfolder "$stage" -fs HFS+ -format UDZO "$dmg"
-    rm -rf "$stage"
-    echo "made $dmg"
+    "$root/scripts/make-dmg.sh" --app "$app" "$out/OpenRDP-Client-$version.dmg"
 fi
 
 if [[ "${1:-}" == "--zip" ]]; then

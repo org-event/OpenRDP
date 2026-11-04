@@ -1,7 +1,10 @@
 // Background for the drag-and-drop disk image.
 // The empty band above the icons tells the user how to leave quarantine.
 //
-//   swift scripts/dmg-background.swift <output.png>
+//   swift scripts/dmg-background.swift <output.png> [<app name>]
+//
+// The app name (default OpenRDP) goes into the title, the quarantine command
+// and the last line; the layout does not depend on it.
 //
 // One 8-point grid for the whole window. scripts/make-dmg.sh reads the
 // positions from stdout and places the Finder icons on the same cells.
@@ -13,10 +16,14 @@
 
 import AppKit
 
-guard CommandLine.arguments.count == 2 else {
-    fputs("usage: dmg-background.swift <output.png>\n", stderr)
+guard (2...3).contains(CommandLine.arguments.count) else {
+    fputs("usage: dmg-background.swift <output.png> [<app name>]\n", stderr)
     exit(2)
 }
+let appName = CommandLine.arguments.count == 3 ? CommandLine.arguments[2] : "OpenRDP"
+let appPath = "/Applications/\(appName).app"
+// The shell needs quotes around a path with a space.
+let quotedPath = appPath.contains(" ") ? "\"\(appPath)\"" : appPath
 
 let grid: CGFloat = 8
 let width = grid * 96
@@ -56,7 +63,7 @@ let image = NSImage(size: NSSize(width: width, height: height), flipped: true) {
     let ink = NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 1)
     let secondary = NSColor(srgbRed: 0.32, green: 0.32, blue: 0.34, alpha: 1)
     draw(
-        "Please unlock OpenRDP",
+        "Please unlock \(appName)",
         font: .systemFont(ofSize: 26, weight: .semibold),
         color: ink,
         y: grid * 4)
@@ -66,7 +73,7 @@ let image = NSImage(size: NSSize(width: width, height: height), flipped: true) {
         color: secondary,
         y: grid * 10)
 
-    let command = "xattr -dr com.apple.quarantine /Applications/OpenRDP.app"
+    let command = "xattr -dr com.apple.quarantine \(quotedPath)"
     let commandLine = NSAttributedString(string: command, attributes: [
         .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .medium),
         .foregroundColor: ink,
@@ -86,7 +93,7 @@ let image = NSImage(size: NSSize(width: width, height: height), flipped: true) {
     commandLine.draw(at: NSPoint(x: chip.minX + 16, y: chip.minY + 8))
 
     draw(
-        "Then open OpenRDP.",
+        "Then open \(appName).",
         font: .systemFont(ofSize: 16, weight: .regular),
         color: secondary,
         y: grid * 21)
