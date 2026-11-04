@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="{{LANG}}">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<style>
+  :root {
+    --bg: #ececec; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --line: rgba(0,0,0,.09);
+    --accent: #7c3aed; --accent-text: #ffffff; --ok: #28a745; --warn: #e0a100; --fail: #e5484d;
+    --field: #f5f5f7; --danger-bg: rgba(229,72,77,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1e1f; --card: #2a2a2c; --text: #f5f5f7; --muted: #98989d; --line: rgba(255,255,255,.09);
+      --accent: #a78bfa; --accent-text: #1a1033; --field: #3a3a3c; --danger-bg: rgba(229,72,77,.14);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; -webkit-user-select: none; }
+  main { max-width: 640px; margin: 0 auto; padding: 52px 28px 32px; }
+  header { display: flex; align-items: center; gap: 18px; margin-bottom: 22px; }
+  header img { width: 76px; height: 76px; filter: drop-shadow(0 4px 10px rgba(0,0,0,.18)); }
+  h1 { font-size: 24px; font-weight: 700; margin: 0; letter-spacing: -.01em; }
+  .status { display: flex; align-items: center; gap: 7px; color: var(--muted); margin-top: 3px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.on { background: var(--ok); box-shadow: 0 0 0 3px rgba(40,167,69,.18); }
+  .dot.off { background: var(--fail); }
+  h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); margin: 22px 4px 8px; display: flex; justify-content: space-between; align-items: end; }
+  .card { background: var(--card); border-radius: 12px; box-shadow: 0 0 0 .5px var(--line), 0 1px 2px rgba(0,0,0,.05); overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; min-height: 44px; }
+  .row + .row { border-top: .5px solid var(--line); }
+  .row .grow { flex: 1; min-width: 0; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-text);
+    display: grid; place-items: center; font-weight: 600; font-size: 13px; flex: none; text-transform: uppercase; }
+  .name { font-weight: 500; font-size: 14px; }
+  .muted { color: var(--muted); }
+  button { font: inherit; border: none; border-radius: 7px; padding: 5px 12px; cursor: default;
+    background: var(--field); color: var(--text); }
+  button:hover { filter: brightness(.96); }
+  button:active { filter: brightness(.9); }
+  button.primary { background: var(--accent); color: var(--accent-text); font-weight: 500; }
+  button.danger { background: transparent; color: var(--fail); }
+  button.danger.solid { background: var(--fail); color: #fff; }
+  button.link { background: transparent; color: var(--accent); padding: 2px 4px; text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 500; }
+  button:disabled { opacity: .45; }
+  .actions { display: flex; gap: 6px; }
+  .actions button { padding: 4px 10px; font-size: 12px; }
+  form.inline { display: grid; gap: 8px; padding: 12px 14px; border-top: .5px solid var(--line); background: var(--danger-bg); }
+  form.inline.neutral { background: transparent; }
+  form.inline .fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  form.inline .fields.two { grid-template-columns: 1fr 1fr; }
+  form.inline .fields.one { grid-template-columns: 1fr; }
+  input { font: inherit; padding: 6px 9px; border-radius: 7px; border: .5px solid var(--line);
+    background: var(--field); color: var(--text); outline: none; -webkit-user-select: text; min-width: 0; }
+  input:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
+  .buttons { display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
+  .buttons .error { flex: 1; color: var(--fail); font-size: 12px; }
+  .check { display: flex; gap: 10px; align-items: flex-start; padding: 8px 14px; }
+  .check + .check { border-top: .5px solid var(--line); }
+  .mark { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; flex: none;
+    color: #fff; font-size: 11px; font-weight: 700; margin-top: 1px; }
+  .mark.ok { background: var(--ok); } .mark.warn { background: var(--warn); } .mark.fail { background: var(--fail); }
+  .summary { padding: 10px 14px; font-weight: 500; border-bottom: .5px solid var(--line); }
+  .placeholder { padding: 16px 14px; color: var(--muted); }
+  .danger-card .row { gap: 16px; }
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(20px); opacity: 0;
+    background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 18px; font-weight: 500;
+    transition: all .25s ease; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateX(-50%); }
+  .spinner { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .8s linear infinite; display: inline-block; vertical-align: -3px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .done { text-align: center; padding: 80px 20px; }
+  .done h1 { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<main id="main"></main>
+<div class="toast" id="toast"></div>
+<script>
+window.onerror = (message, source, line, column) => {
+  window.webkit.messageHandlers.openrdp.postMessage(["log", `${message} at ${line}:${column}`].join("\u001f"));
+};
+const ru = document.documentElement.lang === "ru";
+const T = ru ? {
+  running: "Сервер работает и ждёт подключений", stopped: "Сервер не запущен",
+  accounts: "Аккаунты RDP", accountsHint: "Изменения действуют со следующего подключения",
+  add: "Добавить", none: "Аккаунтов нет: подключиться никто не сможет.",
+  password: "Пароль", rename: "Переименовать", remove: "Удалить",
+  name: "Имя", newName: "Новое имя", pass: "Пароль", again: "Ещё раз",
+  save: "Сохранить", cancel: "Отмена", differ: "Пароли не совпали", empty: "Заполните все поля",
+  confirmRemove: n => `Удалить аккаунт ${n}? Открытый сеанс продолжится, но войти с ним больше нельзя.`,
+  exists: "Такой аккаунт уже есть: смените ему пароль",
+  checks: "Проверка", again2: "Проверить снова", checking: "Проверяю…",
+  allGood: "Всё в порядке", attention: n => `Требует внимания: ${n}`,
+  danger: "Удаление", removeTitle: "Удалить OpenRDP с этого Mac",
+  removeText: "Сервер, служба окна входа, приложение, аккаунты, сертификат, журналы, разрешения и копия в «Программах». Файлы — в Корзину. Настройки самого Mac останутся.",
+  removeConfirm: "Удалить всё? macOS спросит пароль администратора.", removeGo: "Удалить OpenRDP", removing: "Удаляю…",
+  removed: "OpenRDP удалён", removedText: "Файлы перенесены в Корзину. Окно можно закрыть.", close: "Закрыть",
+  saved: "Сохранено", added: "Аккаунт добавлен", deleted: "Аккаунт удалён",
+} : {
+  running: "The server is running and waiting for connections", stopped: "The server is not running",
+  accounts: "RDP accounts", accountsHint: "Changes apply from the next connection",
+  add: "Add", none: "No accounts: nobody can connect.",
+  password: "Password", rename: "Rename", remove: "Remove",
+  name: "Name", newName: "New name", pass: "Password", again: "Again",
+  save: "Save", cancel: "Cancel", differ: "The passwords differ", empty: "Fill in every field",
+  confirmRemove: n => `Remove the account ${n}? An open session keeps running, but it cannot sign in again.`,
+  exists: "That account exists: change its password instead",
+  checks: "Checks", again2: "Check again", checking: "Checking…",
+  allGood: "Everything is in order", attention: n => `Needs attention: ${n}`,
+  danger: "Removal", removeTitle: "Remove OpenRDP from this Mac",
+  removeText: "The server, the login-window service, the app, the accounts, the certificate, the logs, the permissions and the copy in Applications. Files go to the Trash. The Mac's own settings stay.",
+  removeConfirm: "Remove everything? macOS will ask for an administrator password.", removeGo: "Remove OpenRDP", removing: "Removing…",
+  removed: "OpenRDP is removed", removedText: "The files are in the Trash. You can close this window.", close: "Close",
+  saved: "Saved", added: "Account added", deleted: "Account removed",
+};
+const SEP = "\u001f";
+const send = (...parts) => window.webkit.messageHandlers.openrdp.postMessage(parts.join(SEP));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+let state = { version: "", running: false, accounts: [] };
+let editing = null;     // { kind: "add" | "password" | "rename" | "remove", name }
+let checks = null;      // null while checking
+let removal = "idle";   // idle | confirm | working
+let pendingToast = null;
+
+function toast(text) {
+  const t = document.getElementById("toast");
+  t.textContent = text; t.classList.add("show");
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+const app = {
+  state(s) {
+    state = s;
+    if (s.problem) {
+      const msg = s.problem === "exists" ? T.exists : s.problem;
+      render(); showError(msg); return;
+    }
+    editing = null;
+    render();
+    if (pendingToast) { toast(pendingToast); pendingToast = null; }
+  },
+  checks(list) { checks = list; render(); },
+  removed(problem) {
+    if (problem) { removal = "idle"; render(); showError(problem, "remove-error"); return; }
+    document.getElementById("main").innerHTML = `<div class="done"><img src="data:image/png;base64,{{ICON}}" width="96" height="96" style="filter:grayscale(1);opacity:.6"><h1>${T.removed}</h1><p class="muted">${T.removedText}</p><button class="primary" onclick="send('quit')">${T.close}</button></div>`;
+  },
+};
+
+function showError(msg, id = "form-error") {
+  const el = document.getElementById(id);
+  if (el) el.textContent = msg; else toast(msg);
+}
+
+function accountForm() {
+  if (!editing) return "";
+  const n = esc(editing.name || "");
+  const cancel = `<button type="button" onclick="editing=null;render()">${T.cancel}</button>`;
+  if (editing.kind === "remove") {
+    return `<form class="inline" onsubmit="return submitForm(event)"><div>${esc(T.confirmRemove(editing.name))}</div>
+      <div class="buttons"><span class="error" id="form-error"></span>${cancel}<button class="danger solid">${T.remove}</button></div></form>`;
+  }
+  let fields;
+  if (editing.kind === "add") fields = `<div class="fields"><input id="f-name" placeholder="${T.name}" autocomplete="off" spellcheck="false"><input id="f-pass" type="password" placeholder="${T.pass}"><input id="f-again" type="password" placeholder="${T.again}"></div>`;
+  else if (editing.kind === "password") fields = `<div class="fields two"><input id="f-pass" type="password" placeholder="${T.pass}"><input id="f-again" type="password" placeholder="${T.again}"></div>`;
+  else fields = `<div class="fields one"><input id="f-name" value="${n}" placeholder="${T.newName}" autocomplete="off" spellcheck="false"></div>`;
+  return `<form class="inline neutral" onsubmit="return submitForm(event)">${fields}
+    <div class="buttons"><span class="error" id="form-error"></span>${cancel}<button class="primary">${editing.kind === "add" ? T.add : T.save}</button></div></form>`;
+}
+
+function submitForm(e) {
+  e.preventDefault();
+  const val = id => (document.getElementById(id) || {}).value;
+  const k = editing.kind;
+  if (k === "remove") { pendingToast = T.deleted; send("remove", editing.name); return false; }
+  const name = val("f-name"), pass = val("f-pass"), again = val("f-again");
+  if ((k !== "password" && !name?.trim()) || (k !== "rename" && (!pass || !again))) { showError(T.empty); return false; }
+  if (k !== "rename" && pass !== again) { showError(T.differ); return false; }
+  if (k === "add") { pendingToast = T.added; send("add", name.trim(), pass); }
+  if (k === "password") { pendingToast = T.saved; send("password", editing.name, pass); }
+  if (k === "rename") { pendingToast = T.saved; send("rename", editing.name, name.trim()); }
+  return false;
+}
+
+function edit(kind, name) { editing = { kind, name }; render(); }
+
+function render() {
+  const rows = state.accounts.map(a => {
+    const open = editing && editing.name === a && editing.kind !== "add";
+    return `<div class="row"><div class="avatar">${esc(a.slice(0, 1))}</div><div class="grow name">${esc(a)}</div>
+      <div class="actions"><button onclick='edit("password", ${JSON.stringify(a)})'>${T.password}</button>
+      <button onclick='edit("rename", ${JSON.stringify(a)})'>${T.rename}</button>
+      <button class="danger" onclick='edit("remove", ${JSON.stringify(a)})' ${state.accounts.length < 2 ? "disabled" : ""}>${T.remove}</button></div></div>
+      ${open ? accountForm() : ""}`;
+  }).join("");
+  const problems = checks ? checks.filter(c => c.mark !== "ok").length : 0;
+  const sym = { ok: "✓", warn: "!", fail: "✕" };
+  const checkList = checks === null
+    ? `<div class="placeholder"><span class="spinner"></span>${T.checking}</div>`
+    : `<div class="summary">${problems ? T.attention(problems) : T.allGood}</div>` +
+      checks.map(c => `<div class="check"><div class="mark ${c.mark}">${sym[c.mark]}</div><div>${esc(c.text)}</div></div>`).join("");
+  const removalBlock = removal === "idle"
+    ? `<div class="row"><div class="grow"><div class="name">${T.removeTitle}</div><div class="muted">${T.removeText}</div></div><button class="danger" onclick="removal='confirm';render()">${T.remove}…</button></div>`
+    : removal === "confirm"
+    ? `<div class="row"><div class="grow"><div class="name">${T.removeConfirm}</div><div class="error muted" id="remove-error"></div></div><button onclick="removal='idle';render()">${T.cancel}</button><button class="danger solid" onclick="removal='working';render();send('uninstall')">${T.removeGo}</button></div>`
+    : `<div class="row"><span class="spinner"></span>${T.removing}</div>`;
+
+  document.getElementById("main").innerHTML = `
+    <header><img src="data:image/png;base64,{{ICON}}" alt="">
+      <div><h1>OpenRDP <span class="muted" style="font-weight:400;font-size:15px">${esc(state.version)}</span></h1>
+      <div class="status"><span class="dot ${state.running ? "on" : "off"}"></span>${state.running ? T.running : T.stopped}</div></div></header>
+    <h2><span>${T.accounts}</span><button class="link" onclick='edit("add", "")'>＋ ${T.add}</button></h2>
+    <div class="card">${editing && editing.kind === "add" ? accountForm() : ""}${rows || `<div class="placeholder">${T.none}</div>`}</div>
+    <div class="muted" style="margin:6px 4px 0;font-size:12px">${T.accountsHint}</div>
+    <h2><span>${T.checks}</span><button class="link" onclick="checks=null;render();send('check')">${T.again2}</button></h2>
+    <div class="card">${checkList}</div>
+    <h2><span>${T.danger}</span></h2>
+    <div class="card danger-card">${removalBlock}</div>`;
+  const first = document.querySelector("form input");
+  if (first) first.focus();
+}
+
+render();
+send("state");
+send("check");
+</script>
+</body>
+</html>

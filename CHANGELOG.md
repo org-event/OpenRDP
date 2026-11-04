@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- The installed OpenRDP shows one window, after the install and whenever it is opened again, instead of a string of small dialogs: the server's state, the RDP accounts (add, change a password, rename, remove), the checks, and removal from the Mac. It is a WebKit page in an AppKit window inside the server binary, so it updates with the server.
+
 - AVC444 by default stops at 3072×1920; a larger session, such as FreeRDP in full screen on a Retina MacBook (4096×2560), gets AVC420 and goes back to AVC444 when it shrinks. At 4096×2560 the client decodes two H.264 streams a frame and rebuilds full chroma in software: an Intel MacBook fell a minute behind (acknowledgements after 30 to 60 s), dropped frames and showed a garbled picture. `--avc444` still sends AVC444 at any size.
 
 ## [1.6.3] - 2026-11-04

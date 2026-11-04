@@ -34,7 +34,7 @@ ironrdp-rdpsnd = { git = "https://github.com/org-event/IronRDP.git", rev = "5849
 ironrdp-server = { git = "https://github.com/org-event/IronRDP.git", rev = "58492e53ea815a222e4955d03331ca8c1c0bef53", version = "0.14.0", default-features = false, features = ["egfx", "helper", "rayon"] }
 ironrdp-svc = { git = "https://github.com/org-event/IronRDP.git", rev = "58492e53ea815a222e4955d03331ca8c1c0bef53", version = "0.10.0" }
 objc2 = "0.6.5"
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSPasteboard", "NSPasteboardItem", "NSImageRep", "NSBitmapImageRep"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSPasteboard", "NSPasteboardItem", "NSImageRep", "NSBitmapImageRep", "NSApplication", "NSWindow", "NSResponder", "NSView", "NSGraphics", "NSRunningApplication", "NSAppearance", "NSColor", "objc2-core-foundation"] }
 objc2-core-foundation = "0.3.2"
 objc2-core-graphics = "0.3.2"
 objc2-core-media = "0.3.2"
@@ -42,6 +42,7 @@ objc2-core-video = "0.3.2"
 objc2-foundation = "0.3.2"
 objc2-screen-capture-kit = "0.3.2"
 objc2-video-toolbox = "0.3.2"
+objc2-web-kit = { version = "0.3.2", default-features = false, features = ["std", "objc2-app-kit", "WKWebView", "WKWebViewConfiguration", "WKUserContentController", "WKScriptMessage", "WKScriptMessageHandler", "WKNavigation", "block2", "objc2-core-foundation"] }
 pico-args = "0.5.0"
 rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
 tokio = { version = "1.54.1", features = ["rt", "macros", "sync", "time", "net"] }

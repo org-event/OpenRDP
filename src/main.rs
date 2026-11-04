@@ -17,6 +17,7 @@ mod input_source;
 mod power;
 mod rate;
 mod service;
+mod settings;
 mod setup;
 mod signing;
 mod sound;
@@ -277,6 +278,8 @@ fn main() -> anyhow::Result<()> {
             argv.remove(0);
             return users::run(argv);
         }
+        // The installed app's window on its own, as after the install.
+        Some("--settings") => return settings::open(),
         Some("check") => {
             let ru = dialog::russian();
             println!("{}", checkup::report(ru, &checkup::run(ru)));
