@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- OpenRDP Client shows which saved Macs are up: a green dot when RDP answers, yellow when only SSH does (FileVault waiting after a power cut, or a Mac still starting), red when nothing does. Checked every few seconds.
+- OpenRDP Client unlocks FileVault after a power cut: "Unlock" signs in over SSH with the Mac's own account, kept in the Keychain, which macOS 26 and later take as the disk password. "Screen Sharing" opens `vnc://` with the same account when the login window does not come up over RDP, and "Wake" sends a Wake-on-LAN packet to a Mac that does not answer, to the hardware address learnt from the ARP table or typed in.
+
 ## [1.5.2] - 2026-11-04
 
 ### Fixed

@@ -4,6 +4,7 @@ struct ServerEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var server: Server
     @State private var password: String
+    @State private var macPassword: String
     @State private var customSize: Bool
     private let isNew: Bool
     private let onSave: (Server) -> Void
@@ -11,6 +12,7 @@ struct ServerEditor: View {
     init(server: Server, onSave: @escaping (Server) -> Void) {
         _server = State(initialValue: server)
         _password = State(initialValue: Keychain.password(for: server.id) ?? "")
+        _macPassword = State(initialValue: Keychain.password(for: server.id, .mac) ?? "")
         _customSize = State(initialValue: server.windowWidth != nil)
         isNew = server.host.isEmpty
         self.onSave = onSave
@@ -19,7 +21,13 @@ struct ServerEditor: View {
     private var problem: String? {
         if server.host.trimmingCharacters(in: .whitespaces).isEmpty { return "Укажите адрес." }
         if !(1...65535).contains(server.port) { return "Порт должен быть от 1 до 65535." }
-        if password.contains(where: \.isNewline) { return "Пароль не может содержать перевод строки." }
+        if password.contains(where: \.isNewline) || macPassword.contains(where: \.isNewline) {
+            return "Пароль не может содержать перевод строки."
+        }
+        if !(1...65535).contains(server.sshPort) { return "Порт SSH должен быть от 1 до 65535." }
+        if !server.wakeAddress.isEmpty && Host.macBytes(server.wakeAddress) == nil {
+            return "MAC-адрес вида a4:83:e7:12:34:56."
+        }
         return nil
     }
 
@@ -32,6 +40,17 @@ struct ServerEditor: View {
                     TextField("Порт", value: $server.port, format: .number.grouping(.never))
                     TextField("Пользователь", text: $server.user)
                     SecureField("Пароль", text: $password, prompt: Text("хранится в Связке ключей"))
+                }
+                Section {
+                    TextField("Пользователь Mac", text: $server.macUser, prompt: Text("учётная запись macOS"))
+                    SecureField("Пароль Mac", text: $macPassword, prompt: Text("хранится в Связке ключей"))
+                    TextField("Порт SSH", value: $server.sshPort, format: .number.grouping(.never))
+                    TextField("MAC-адрес", text: $server.wakeAddress, prompt: Text("узнается сам, когда Mac в сети"))
+                } header: {
+                    Text("После включения")
+                } footer: {
+                    Text("После пропадания питания Mac с FileVault ждёт пароль, и RDP недоступен. Клиент разблокирует диск по SSH (macOS 26 и новее, включите «Удалённый вход»), будит Mac по Wake-on-LAN и входит в «Общий экран» этой учётной записью.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Сеанс") {
                     Picker("Видео", selection: $server.codec) {
@@ -81,17 +100,20 @@ struct ServerEditor: View {
             }
             .padding()
         }
-        .frame(width: 480, height: 600)
+        .frame(width: 480, height: 680)
     }
 
     private func save() {
         server.host = server.host.trimmingCharacters(in: .whitespaces)
         server.user = server.user.trimmingCharacters(in: .whitespaces)
+        server.macUser = server.macUser.trimmingCharacters(in: .whitespaces)
+        server.wakeAddress = server.wakeAddress.trimmingCharacters(in: .whitespaces).lowercased()
         if !customSize {
             server.windowWidth = nil
             server.windowHeight = nil
         }
         Keychain.setPassword(password, for: server.id)
+        Keychain.setPassword(macPassword, for: server.id, .mac)
         onSave(server)
         dismiss()
     }

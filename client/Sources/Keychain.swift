@@ -1,20 +1,26 @@
 import Foundation
 import Security
 
-/// Server passwords as generic Keychain items, one per server id.
+/// Server passwords as generic Keychain items, one per server id: the RDP
+/// password under the id itself, the Mac account's password (for unlocking
+/// FileVault and for Screen Sharing) under `<id>.mac`.
 enum Keychain {
+    enum Kind {
+        case rdp, mac
+    }
+
     private static let service = "OpenRDP Client"
 
-    private static func query(for id: UUID) -> [String: Any] {
+    private static func query(for id: UUID, _ kind: Kind) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: id.uuidString,
+            kSecAttrAccount as String: kind == .rdp ? id.uuidString : "\(id.uuidString).mac",
         ]
     }
 
-    static func password(for id: UUID) -> String? {
-        var q = query(for: id)
+    static func password(for id: UUID, _ kind: Kind = .rdp) -> String? {
+        var q = query(for: id, kind)
         q[kSecReturnData as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: AnyObject?
@@ -24,12 +30,12 @@ enum Keychain {
     }
 
     @discardableResult
-    static func setPassword(_ password: String, for id: UUID) -> Bool {
-        guard !password.isEmpty else { return deletePassword(for: id) }
+    static func setPassword(_ password: String, for id: UUID, _ kind: Kind = .rdp) -> Bool {
+        guard !password.isEmpty else { return deletePassword(for: id, kind) }
         let data = Data(password.utf8)
-        let status = SecItemUpdate(query(for: id) as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        let status = SecItemUpdate(query(for: id, kind) as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if status == errSecItemNotFound {
-            var q = query(for: id)
+            var q = query(for: id, kind)
             q[kSecValueData as String] = data
             q[kSecAttrLabel as String] = "OpenRDP Client"
             q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
@@ -39,8 +45,8 @@ enum Keychain {
     }
 
     @discardableResult
-    static func deletePassword(for id: UUID) -> Bool {
-        let status = SecItemDelete(query(for: id) as CFDictionary)
+    static func deletePassword(for id: UUID, _ kind: Kind = .rdp) -> Bool {
+        let status = SecItemDelete(query(for: id, kind) as CFDictionary)
         return status == errSecSuccess || status == errSecItemNotFound
     }
 }
