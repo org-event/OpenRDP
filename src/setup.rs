@@ -29,6 +29,9 @@ pub fn run() -> anyhow::Result<()> {
     if !guide_screen(ru, &mut ask)? || !guide_accessibility(ru, &mut ask)? {
         return dialog::note(cancelled(ru));
     }
+    if ask(folders_intro(ru), dialog::next_button())? {
+        ask_for_folders();
+    }
     if was_running {
         crate::service::restart_agent()?;
     } else {
@@ -116,6 +119,19 @@ pub(crate) fn until_granted(
     }
 }
 
+/// Files copied in Finder are read when the client pastes them, so macOS
+/// would ask for Desktop, Documents and Downloads at that moment, at the Mac,
+/// in the middle of a remote session. Listing each folder now asks while
+/// somebody is at the Mac; the answer is kept.
+fn ask_for_folders() {
+    let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) else {
+        return;
+    };
+    for folder in ["Desktop", "Documents", "Downloads"] {
+        let _ = std::fs::read_dir(home.join(folder)).map(|mut entries| entries.next());
+    }
+}
+
 pub(crate) fn capture_granted() -> bool {
     objc2_core_graphics::CGPreflightScreenCaptureAccess()
 }
@@ -173,6 +189,14 @@ fn accessibility_still(ru: bool) -> &'static str {
         "Универсальный доступ всё ещё выключен. Включите переключатель OpenRDP и нажмите «Проверить»."
     } else {
         "Accessibility is still off. Turn on the OpenRDP switch, then click Check."
+    }
+}
+
+fn folders_intro(ru: bool) -> &'static str {
+    if ru {
+        "Дальше папки. macOS спросит доступ к Рабочему столу, Документам и Загрузкам: нажмите «Разрешить» в каждом окне. Это нужно, чтобы копировать файлы через буфер обмена, и иначе macOS спросит об этом посреди удалённой сессии. Можно отказаться: всё остальное работает и без этого."
+    } else {
+        "Next are folders. macOS asks for the Desktop, Documents and Downloads: click Allow in each window. Copying files through the clipboard needs them, and otherwise macOS would ask in the middle of a remote session. You can say no: everything else works without them."
     }
 }
 

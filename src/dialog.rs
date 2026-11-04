@@ -84,9 +84,9 @@ pub fn broker_skipped() -> &'static str {
 
 pub fn admin_coming() -> &'static str {
     if russian() {
-        "Сейчас macOS спросит пароль администратора этого Mac. Он нужен один раз, чтобы после перезагрузки можно было подключиться ещё на экране входа."
+        "Сейчас macOS спросит пароль администратора этого Mac. Он нужен один раз: чтобы после перезагрузки можно было подключиться ещё на экране входа, и чтобы Mac сам включался после пропадания питания, просыпался по сети и пускал по SSH и через «Общий экран» — так OpenRDP Client разблокирует FileVault. Брандмауэр разрешит OpenRDP входящие подключения."
     } else {
-        "macOS will now ask for this Mac's administrator password. It is needed once, so a restart can still be reached at the login window."
+        "macOS will now ask for this Mac's administrator password. It is needed once: so a restart can still be reached at the login window, and so the Mac starts up by itself after a power cut, wakes for network access, and takes SSH and Screen Sharing, which OpenRDP Client uses to unlock FileVault. The firewall will let OpenRDP accept connections."
     }
 }
 

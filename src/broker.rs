@@ -420,7 +420,77 @@ pub(crate) fn install_system(staged: &Path) -> anyhow::Result<()> {
         }
     }
     println!("Installed {DAEMON_PLIST}.");
+    prepare_remote_power_on(&config.binary);
     Ok(())
+}
+
+/// Settings a Mac reached only over the network needs after a power cut,
+/// set while the install has root anyway, so none of them has to be found by
+/// hand later. None of them fails the install: each one says how it went.
+///
+/// - start up again by itself when the power comes back (`autorestart`);
+/// - wake for network access, so a client can wake it (`womp`);
+/// - Remote Login (SSH): macOS 26 takes the FileVault password over it, and
+///   OpenRDP Client's Unlock uses that;
+/// - Screen Sharing, the client's fallback when the login window does not
+///   come up over RDP;
+/// - the application firewall lets the server accept connections, instead of
+///   asking at the Mac the first time a client connects.
+fn prepare_remote_power_on(binary: &Path) {
+    let step = |what: &str, command: &mut Command| {
+        let ok = command
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success());
+        println!("{what}: {}", if ok { "on" } else { "could not turn it on" });
+    };
+    step(
+        "Start up after a power failure",
+        Command::new("/usr/bin/pmset").args(["-a", "autorestart", "1"]),
+    );
+    step(
+        "Wake for network access",
+        Command::new("/usr/bin/pmset").args(["-a", "womp", "1"]),
+    );
+    for (what, label, plist) in [
+        (
+            "Remote Login (SSH)",
+            "com.openssh.sshd",
+            "/System/Library/LaunchDaemons/ssh.plist",
+        ),
+        (
+            "Screen Sharing",
+            "com.apple.screensharing",
+            "/System/Library/LaunchDaemons/com.apple.screensharing.plist",
+        ),
+    ] {
+        let _ = Command::new("/bin/launchctl")
+            .args(["enable", &format!("system/{label}")])
+            .status();
+        let loaded = Command::new("/bin/launchctl")
+            .args(["print", &format!("system/{label}")])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success());
+        if loaded {
+            println!("{what}: on");
+        } else {
+            step(
+                what,
+                Command::new("/bin/launchctl").args(["bootstrap", "system", plist]),
+            );
+        }
+    }
+    let firewall = "/usr/libexec/ApplicationFirewall/socketfilterfw";
+    if Path::new(firewall).exists() {
+        let _ = Command::new(firewall).arg("--add").arg(binary).status();
+        step(
+            "Firewall lets OpenRDP accept connections",
+            Command::new(firewall).arg("--unblockapp").arg(binary),
+        );
+    }
 }
 
 /// Stops the daemon and deletes its config. Root only.
@@ -430,6 +500,15 @@ pub(crate) fn uninstall_system() -> anyhow::Result<()> {
     let _ = Command::new("/bin/launchctl")
         .args(["bootout", &format!("system/{LABEL}")])
         .status();
+    // The firewall rule goes with the app. The power, SSH and Screen Sharing
+    // settings stay: they are the Mac's, and may have been on before.
+    if let Ok(config) = Config::load(Path::new(CONFIG_PATH)) {
+        let _ = Command::new("/usr/libexec/ApplicationFirewall/socketfilterfw")
+            .arg("--remove")
+            .arg(&config.binary)
+            .stdout(std::process::Stdio::null())
+            .status();
+    }
     for path in [AGENT_PLIST, DAEMON_PLIST, CONFIG_PATH, PID_PATH] {
         if Path::new(path).exists() {
             std::fs::remove_file(path).with_context(|| format!("remove {path}"))?;
