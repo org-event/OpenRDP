@@ -117,7 +117,19 @@ struct Link {
 }
 
 impl Link {
-    async fn call(&self, message: RdpdrServerMessage) -> FsResult<Reply> {
+    /// Sends `message` and waits for its reply. The exchange runs in a task
+    /// of its own, so it ends with its reply even when the caller goes away,
+    /// as when webdavfs drops a GET halfway: otherwise that reply would answer
+    /// the next request, and every one after it would get the data of the
+    /// one before.
+    async fn call(self: &Arc<Self>, message: RdpdrServerMessage) -> FsResult<Reply> {
+        let link = Arc::clone(self);
+        tokio::spawn(async move { link.exchange(message).await })
+            .await
+            .map_err(|_| FsError::GeneralFailure)?
+    }
+
+    async fn exchange(&self, message: RdpdrServerMessage) -> FsResult<Reply> {
         let _turn = self.turn.lock().await;
         let (tx, rx) = oneshot::channel();
         *self.pending.lock().expect("poisoned") = Some(tx);
@@ -1001,6 +1013,41 @@ mod tests {
         assert_eq!(rdp_path(&DavPath::new("/Docs/").unwrap()), "\\Docs");
         let filetime = i64::try_from(FILETIME_EPOCH * 10_000_000 + 15).unwrap();
         assert_eq!(time(filetime), UNIX_EPOCH + Duration::from_nanos(1500));
+    }
+
+    /// A request whose caller goes away (webdavfs drops a GET) still takes
+    /// its own reply, so the next request does not get it instead.
+    #[tokio::test]
+    async fn a_dropped_request_keeps_its_reply() {
+        let (events, mut sent) = tokio::sync::mpsc::unbounded_channel();
+        let link = Arc::new(Link {
+            events: Some(events),
+            pending: Mutex::new(None),
+            turn: tokio::sync::Mutex::new(()),
+        });
+        let close = |file_id| RdpdrServerMessage::Close {
+            device_id: 1,
+            file_id,
+        };
+        let status = |reply: FsResult<Reply>| reply.map(|reply| reply.status()).ok();
+
+        let first = {
+            let link = Arc::clone(&link);
+            tokio::spawn(async move { link.call(close(1)).await })
+        };
+        assert!(sent.recv().await.is_some());
+        first.abort();
+        assert!(first.await.is_err());
+
+        let second = {
+            let link = Arc::clone(&link);
+            tokio::spawn(async move { link.call(close(2)).await })
+        };
+        tokio::task::yield_now().await;
+        link.complete(Reply::Status(NtStatus::ACCESS_DENIED));
+        assert!(sent.recv().await.is_some());
+        link.complete(Reply::Status(NtStatus::SUCCESS));
+        assert_eq!(status(second.await.unwrap()), Some(NtStatus::SUCCESS));
     }
 
     #[test]
