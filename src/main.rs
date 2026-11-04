@@ -3,6 +3,7 @@
 mod avc444;
 mod broker;
 mod capture;
+mod checkup;
 mod clipboard;
 mod clipboard_files;
 mod cursor;
@@ -51,6 +52,8 @@ USAGE:
                            opened again, it lists the RDP accounts to add,
                            change or remove
   openrdp uninstall    remove the agent, the app and the login-window service
+  openrdp check        check the server, its permissions and the Mac's
+                       settings for remote access, as the app's Check does
 
 OPTIONS:
   --bind <ADDR>       listen address [default: 0.0.0.0:3389]
@@ -271,6 +274,11 @@ fn main() -> anyhow::Result<()> {
         Some("user") => {
             argv.remove(0);
             return users::run(argv);
+        }
+        Some("check") => {
+            let ru = dialog::russian();
+            println!("{}", checkup::report(ru, &checkup::run(ru)));
+            return Ok(());
         }
         // The install's Screen Recording check, in a process of its own.
         Some("--check-capture") => {

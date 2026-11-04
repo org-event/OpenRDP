@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 
 - Opening the installed OpenRDP shows the RDP accounts, with buttons to add one, change a password, rename or remove one, instead of only saying that it is installed.
+- "Check the server" in the installed app, and `openrdp check` in a terminal: the server, the port, the permissions, the accounts, the login-window service and the Mac's settings for remote access, each marked as fine or not.
+- "Remove OpenRDP from this Mac" in the installed app: the services, the app, the accounts, the certificate, the logs, the permissions and the copy in Applications, with the files moved to the Trash. Uninstalling the login-window service now also removes its log and its empty directory.
 
 ### Fixed
 
