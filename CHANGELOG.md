@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.6.6] - 2026-11-04
+
 ### Changed
 
 - AVC420 is the default again for every client; AVC444 only with `--avc444`. FreeRDP needs both AVC444 views as one stream, since it decodes them with one decoder, and the Mac's hardware encoder refers each frame only to the one before, which is the other view: on a 4096×2560 session AVC444 took 66 ms a frame and came out softer than AVC420. The encoder offers no way to refer a view to its own previous picture.
@@ -237,7 +239,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.5...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.6...HEAD
+[1.6.6]: https://github.com/org-event/OpenRDP/compare/v1.6.5...v1.6.6
 [1.6.5]: https://github.com/org-event/OpenRDP/compare/v1.6.4...v1.6.5
 [1.6.4]: https://github.com/org-event/OpenRDP/compare/v1.6.3...v1.6.4
 [1.6.3]: https://github.com/org-event/OpenRDP/compare/v1.6.2...v1.6.3
