@@ -63,10 +63,8 @@ OPTIONS:
   --bitrate <MBPS>    average H.264 bitrate [default: 20]
   --avc444            send AVC444 to every client that negotiates it: sharper
                       text and colour edges, about twice the encoding. By
-                      default only FreeRDP-based clients get it, up to
-                      3072x1920 (larger frames go as AVC420, which the client
-                      decodes in time): Windows App for Mac negotiates it,
-                      then drops the connection
+                      default only FreeRDP-based clients get it: Windows App
+                      for Mac negotiates it, then drops the connection
   --no-avc444         never send AVC444
   --fixed-size        stream the main display as it is instead of a virtual
                       display sized to the client
