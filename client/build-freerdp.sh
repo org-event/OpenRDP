@@ -6,7 +6,9 @@
 #   - SDL3 is built with -DSDL_MAC_NO_SANDBOX, so its keyboard grab stops the
 #     client Mac from taking Cmd+Space and the other system shortcuts;
 #   - FFmpeg has only what FreeRDP uses (H.264 decoding, swscale);
-#   - OpenSSL, jansson and FreeType are linked in statically.
+#   - OpenSSL, jansson, FreeType and libpng are linked in statically;
+#   - WinPR has PNG support, so a screenshot copied on the client Mac (the
+#     pasteboard holds PNG, never BMP) can be pasted on the server.
 #
 # Needs the Command Line Tools and `brew install cmake ninja nasm pkgconf`.
 # Each finished step leaves a stamp in build/deps/stamps, so a rerun picks up
@@ -25,6 +27,7 @@ jobs=$(sysctl -n hw.ncpu)
 OPENSSL=(4.1.0 https://github.com/openssl/openssl/releases/download/openssl-4.1.0/openssl-4.1.0.tar.gz 50c17baf54cb008f6ce42d50deb4b28050a1aad711636cabd4b241c7e90cc2fd)
 FFMPEG=(9.0.2 https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz 8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e)
 JANSSON=(2.15.1 https://github.com/akheron/jansson/releases/download/v2.15.1/jansson-2.15.1.tar.gz 0c7114dc0b2d22a670724a1f95922029d7077c19dbf79a584cb8084d2f267f2f)
+LIBPNG=(1.6.59 https://downloads.sourceforge.net/project/libpng/libpng16/1.6.59/libpng-1.6.59.tar.xz d80dd2a38a37f803cb9b6ac7b14bd6e74ddc3b654780a8380bdf93523fdb4389)
 FREETYPE=(2.15.0 https://downloads.sourceforge.net/project/freetype/freetype2/2.15.0/freetype-2.15.0.tar.xz 93cd47eb719c325107f2d3cf087d06299e944c3b48a40b55537302304dea1dd5)
 SDL3=(3.4.18 https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz 9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3)
 SDL3_TTF=(3.2.2 https://github.com/libsdl-org/SDL_ttf/releases/download/release-3.2.2/SDL3_ttf-3.2.2.tar.gz 63547d58d0185c833213885b635a2c0548201cc8f301e6587c0be1a67e1e045d)
@@ -124,6 +127,14 @@ build_jansson() {
         -DJANSSON_WITHOUT_TESTS=ON -DJANSSON_BUILD_SHARED_LIBS=OFF
 }
 
+build_libpng() {
+    local dir="$work/libpng-$1"
+    unpack "$src/$(basename "${LIBPNG[1]}")" "$dir"
+    # No SIMD: libpng picks it from the build machine, not the target arch.
+    cmake_build "$1" "$dir" -DPNG_SHARED=OFF -DPNG_STATIC=ON -DPNG_FRAMEWORK=OFF -DPNG_TESTS=OFF \
+        -DPNG_TOOLS=OFF -DPNG_HARDWARE_OPTIMIZATIONS=OFF
+}
+
 build_freetype() {
     local dir="$work/freetype-$1"
     unpack "$src/$(basename "${FREETYPE[1]}")" "$dir"
@@ -161,7 +172,7 @@ build_freerdp() {
         -DWITH_SOXR=OFF -DWITH_URIPARSER=OFF -DWITH_WEBVIEW=OFF -DWITH_AAD=OFF -DWITH_FIDO=OFF \
         -DWITH_CAIRO=OFF -DWITH_LIBSYSTEMD=OFF -DWITH_UNICODE_BUILTIN=ON -DWITH_JANSSON_REQUIRED=ON \
         -DCHANNEL_URBDRC=OFF -DWITH_VERBOSE_WINPR_ASSERT=OFF -DWITH_INTERNAL_RC4=ON -DWITH_INTERNAL_MD4=ON \
-        -DWITH_INTERNAL_MD5=ON -DOPENSSL_ROOT_DIR="$work/prefix-$arch" -DOPENSSL_USE_STATIC_LIBS=ON
+        -DWITH_INTERNAL_MD5=ON -DWINPR_UTILS_IMAGE_PNG=ON -DOPENSSL_ROOT_DIR="$work/prefix-$arch" -DOPENSSL_USE_STATIC_LIBS=ON
 }
 
 for arch in "${archs[@]}"; do
@@ -171,6 +182,8 @@ for arch in "${archs[@]}"; do
     step ffmpeg "$arch" build_ffmpeg
     built jansson "$arch" || fetch jansson "${JANSSON[@]}"
     step jansson "$arch" build_jansson
+    built libpng "$arch" || fetch libpng "${LIBPNG[@]}"
+    step libpng "$arch" build_libpng
     built freetype "$arch" || fetch freetype "${FREETYPE[@]}"
     step freetype "$arch" build_freetype
     built sdl3 "$arch" || fetch sdl3 "${SDL3[@]}"

@@ -156,7 +156,12 @@ final class AppModel: ObservableObject {
                                       passSystemShortcuts: passSystemShortcuts)
             sessions[server.id] = session
             // Re-publish so views that list sessions see their state change.
-            cancellables[server.id] = session.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
+            cancellables[server.id] = session.objectWillChange.sink { [weak self] in
+                self?.objectWillChange.send()
+                // The session's state changes right after this fires.
+                DispatchQueue.main.async { self?.updateDockIcon() }
+            }
+            updateDockIcon()
         } catch {
             launchError = "Не удалось запустить sdl-freerdp: \(error.localizedDescription)"
         }
@@ -176,6 +181,22 @@ final class AppModel: ObservableObject {
     }
 
     var runningCount: Int { sessions.values.filter(\.isRunning).count }
+
+    /// While a session is open its window, sdl-freerdp, has a Dock icon of its
+    /// own, with this app's icon, so the client steps out of the Dock to leave
+    /// one. Opening the client again (Launchpad, Applications) brings it back.
+    func updateDockIcon() {
+        let policy: NSApplication.ActivationPolicy = runningCount > 0 ? .accessory : .regular
+        guard NSApp.activationPolicy() != policy else { return }
+        NSApp.setActivationPolicy(policy)
+    }
+
+    /// The client opened again during a session: back in the Dock, in front.
+    func showClient() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first { $0.identifier?.rawValue == "main" || $0.title == "OpenRDP Client" }?.makeKeyAndOrderFront(nil)
+    }
 
     func disconnectAll() {
         sessions.values.forEach { $0.disconnect() }
