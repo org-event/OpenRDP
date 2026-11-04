@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-04
+
+### Changed
+
+- New icons: a purple O for the server and a blue one for OpenRDP Client, so the two apps are told apart in Finder, the Dock and Privacy & Security.
+- The client's disk image is laid out like the server's: the same window and background, with the client's own name and quarantine command.
+- CodeQL scans the Rust code and the workflows on every push and pull request, and weekly.
+
 ## [1.5.0] - 2026-11-03
 
 ### Added
@@ -157,7 +165,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/org-event/OpenRDP/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/org-event/OpenRDP/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/org-event/OpenRDP/compare/v1.3.10...v1.4.0
 [1.3.10]: https://github.com/org-event/OpenRDP/compare/v1.3.9...v1.3.10
