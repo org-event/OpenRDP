@@ -47,7 +47,7 @@ enum FreeRDP {
     ///
     /// They reach sdl-freerdp on stdin through `/args-from:stdin`, one per line,
     /// so the password never shows up in `ps` or in a file.
-    static func arguments(for server: Server, password: String?) -> [String] {
+    static func arguments(for server: Server, password: String?, reverseScroll: Bool = false) -> [String] {
         var args = [
             "/v:\(server.address)",
             "/t:\(server.displayName)",
@@ -74,6 +74,8 @@ enum FreeRDP {
                 args.append(arg)
             }
         }
+        if reverseScroll { shell.insert("reversescroll", at: 0) }
+        if !server.keepForReconnect { shell.insert("nokeep", at: 0) }
         if server.curtain { shell.insert("curtain", at: 0) }
         if !shell.isEmpty { args.append("/shell:" + shell.joined(separator: ",")) }
         // A line break would split an argument in two, and an empty line ends the list.
@@ -130,7 +132,7 @@ final class Session: ObservableObject, Identifiable {
     private let process = Process()
     private var disconnectRequested = false
 
-    init(server: Server, binary: URL, password: String?, passSystemShortcuts: Bool) throws {
+    init(server: Server, binary: URL, password: String?, passSystemShortcuts: Bool, reverseScroll: Bool) throws {
         self.server = server
         try FileManager.default.createDirectory(at: AppPaths.logs, withIntermediateDirectories: true)
         let safeName = server.displayName.replacingOccurrences(of: "/", with: "-")
@@ -162,7 +164,7 @@ final class Session: ObservableObject, Identifiable {
         }
         try process.run()
 
-        var args = FreeRDP.arguments(for: server, password: password)
+        var args = FreeRDP.arguments(for: server, password: password, reverseScroll: reverseScroll)
         // Without the grab the bundled SDL leaves system shortcuts to this Mac too.
         if !passSystemShortcuts { args.append("-grab-keyboard") }
         let lines = args.joined(separator: "\n") + "\n\n"

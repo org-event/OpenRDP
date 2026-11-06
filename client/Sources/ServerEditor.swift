@@ -73,6 +73,8 @@ struct ServerEditor: View {
                     }
                     Toggle("Общий буфер обмена", isOn: $server.clipboard)
                     Toggle("Гасить экран Мака во время сессии", isOn: $server.curtain)
+                    Toggle("Ждать переподключения 5 минут", isOn: $server.keepForReconnect)
+                        .help("Включено: после отключения сервер 5 минут держит экран сеанса, и окна остаются на месте при переподключении. Выключено: убирает его сразу.")
                     Picker("Сертификат", selection: $server.certificate) {
                         ForEach(Server.Certificate.allCases) { Text($0.title).tag($0) }
                     }

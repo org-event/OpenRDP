@@ -24,6 +24,11 @@ final class AppModel: ObservableObject {
     @Published var passSystemShortcuts: Bool {
         didSet { defaults.set(passSystemShortcuts, forKey: "passSystemShortcuts") }
     }
+    /// Turn the vertical scroll of the trackpad and the mouse the other way in
+    /// the session; the OpenRDP server does it (`reversescroll`).
+    @Published var reverseScroll: Bool {
+        didSet { defaults.set(reverseScroll, forKey: "reverseScroll") }
+    }
     @Published var hotkeyModifier: HotkeyModifier {
         didSet { defaults.set(hotkeyModifier.rawValue, forKey: "hotkeyModifier"); applyHotkeys() }
     }
@@ -40,6 +45,7 @@ final class AppModel: ObservableObject {
         customBinaryPath = defaults.string(forKey: "customBinaryPath") ?? ""
         preferBundled = defaults.object(forKey: "preferBundled") as? Bool ?? true
         passSystemShortcuts = defaults.object(forKey: "passSystemShortcuts") as? Bool ?? true
+        reverseScroll = defaults.bool(forKey: "reverseScroll")
         hotkeyModifier = defaults.string(forKey: "hotkeyModifier").flatMap(HotkeyModifier.init(rawValue:)) ?? .rightCommandOption
         locateBinary()
         applyHotkeys()
@@ -153,7 +159,8 @@ final class AppModel: ObservableObject {
         do {
             let session = try Session(server: server, binary: binary,
                                       password: Keychain.password(for: server.id),
-                                      passSystemShortcuts: passSystemShortcuts)
+                                      passSystemShortcuts: passSystemShortcuts,
+                                      reverseScroll: reverseScroll)
             sessions[server.id] = session
             // Re-publish so views that list sessions see their state change.
             cancellables[server.id] = session.objectWillChange.sink { [weak self] in

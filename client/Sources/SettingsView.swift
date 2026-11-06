@@ -63,6 +63,16 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            Section {
+                Toggle("Обратная прокрутка", isOn: $model.reverseScroll)
+            } header: {
+                Text("Трекпад и мышь")
+            } footer: {
+                Text("Прокрутка вверх и вниз в сеансе идёт в другую сторону, для трекпада и мыши. Делает сервер OpenRDP; действует со следующего подключения.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section { HotkeyList() }
         }
         .formStyle(.grouped)

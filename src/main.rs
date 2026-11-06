@@ -4,6 +4,7 @@ mod avc444;
 mod broker;
 mod capture;
 mod checkup;
+mod client_options;
 mod clipboard;
 mod clipboard_files;
 mod cursor;
@@ -75,7 +76,8 @@ OPTIONS:
                       [default: 3072x1920]
   --keep-display <SEC>
                       keep the virtual display after a disconnect, so windows
-                      stay put for a reconnect; 0 removes it at once
+                      stay put for a reconnect; 0 removes it at once. A
+                      client with `nokeep` in its alternate shell gets 0
                       [default: 300]
   --hidpi             with --fixed-size: stream in pixels instead of points
   --curtain <client|always|never>
@@ -468,11 +470,11 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
 
     let screen = Arc::new(ScreenState::new(screen));
     let advanced_input = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let curtain_asked = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let options = Arc::new(client_options::ClientOptions::default());
     let shared = Arc::new(Shared::new(
         Arc::clone(&screen),
         Arc::clone(&advanced_input),
-        Arc::clone(&curtain_asked),
+        Arc::clone(&options),
     ));
     let builder = RdpServer::builder().with_addr(args.bind);
     let builder = if args.hybrid {
@@ -482,14 +484,14 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
     };
     let _awake = power::Awake::system();
     let mut server = builder
-        .with_input_handler(MacInput::new(screen, advanced_input))
+        .with_input_handler(MacInput::new(screen, advanced_input, Arc::clone(&options)))
         .with_display_handler(MacDisplay::new(config, Arc::clone(&shared)))
         .with_gfx_factory(Some(Box::new(GfxFactory::new(shared))))
         .with_cliprdr_factory(
             args.clipboard
                 .then(|| Box::new(clipboard::MacClipboardFactory::default()) as Box<_>),
         )
-        .with_connection_handler(Some(Box::new(curtain::ClientRequest(curtain_asked))))
+        .with_connection_handler(Some(Box::new(client_options::ClientRequest(options))))
         .with_rdpdr_factory(
             args.drives
                 .then(|| Box::new(drives::DriveFactory::default()) as Box<_>),

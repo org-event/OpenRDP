@@ -43,12 +43,19 @@ pub struct MacInput {
     /// Set when the client opens FreeRDP's advanced input channel; the display
     /// then sends it AVC444.
     advanced_input: Arc<AtomicBool>,
+    /// What the connected client asked for: `reversescroll` here.
+    options: Arc<crate::client_options::ClientOptions>,
 }
 
 impl MacInput {
-    pub fn new(screen: Arc<ScreenState>, advanced_input: Arc<AtomicBool>) -> Self {
+    pub fn new(
+        screen: Arc<ScreenState>,
+        advanced_input: Arc<AtomicBool>,
+        options: Arc<crate::client_options::ClientOptions>,
+    ) -> Self {
         Self {
             advanced_input,
+            options,
             screen,
             modifiers: CGEventFlags::empty(),
             position: CGPoint::ZERO,
@@ -220,6 +227,11 @@ impl MacInput {
     }
 
     fn scroll(&self, vertical: i32, horizontal: i32) {
+        let vertical = if self.options.reverse_scroll.load(Ordering::Acquire) {
+            -vertical
+        } else {
+            vertical
+        };
         // RDP wheel units are 120 per notch; a third of that in pixels feels like
         // a native notch and keeps trackpad deltas smooth.
         let event = CGEvent::new_scroll_wheel_event2(
