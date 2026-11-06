@@ -1,6 +1,6 @@
 [package]
 name = "openrdp"
-version = "1.6.6"
+version = "1.6.7"
 edition = "2024"
 description = "OpenRDP: an RDP server for macOS on Apple Silicon: ScreenCaptureKit, VideoToolbox H.264, EGFX"
 license = "MIT OR Apache-2.0"
