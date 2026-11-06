@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.6.7] - 2026-11-06
+
 ### Added
 
 - OpenRDP Client: "Wait 5 minutes for a reconnect" per server, on by default. On, the server keeps the session's virtual display five minutes after a disconnect, as before, so windows stay where they were; off, it removes it as soon as the client leaves. The client sends `nokeep` in the alternate shell, and any client can: `/shell:nokeep` in FreeRDP.
@@ -248,7 +250,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.6...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.7...HEAD
+[1.6.7]: https://github.com/org-event/OpenRDP/compare/v1.6.6...v1.6.7
 [1.6.6]: https://github.com/org-event/OpenRDP/compare/v1.6.5...v1.6.6
 [1.6.5]: https://github.com/org-event/OpenRDP/compare/v1.6.4...v1.6.5
 [1.6.4]: https://github.com/org-event/OpenRDP/compare/v1.6.3...v1.6.4
