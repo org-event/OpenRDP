@@ -291,6 +291,7 @@ private struct ServerDetail: View {
                         row("Сертификат", server.certificate.title)
                         row("Буфер обмена", server.clipboard ? "Общий" : "Выключен")
                         row("Экран Мака", server.curtain ? "Гаснет во время сессии" : "Не гаснет")
+                        row("После отключения", server.keepForReconnect ? "Ждёт переподключения 5 минут" : "Сеанс убирается сразу")
                         if !server.extraArgumentList.isEmpty {
                             row("Дополнительно", server.extraArgumentList.joined(separator: " "))
                         }

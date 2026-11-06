@@ -21,7 +21,7 @@ use tracing::{info, warn};
 /// When the Mac's own displays go dark.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Policy {
-    /// When the client asks, with `curtain` as its alternate shell.
+    /// When the client asks, with `curtain` in its alternate shell.
     Client,
     Always,
     Never,
@@ -37,29 +37,6 @@ impl std::str::FromStr for Policy {
             "never" => Ok(Self::Never),
             other => Err(format!("--curtain is client, always or never, not {other}")),
         }
-    }
-}
-
-/// Whether a client's alternate shell (`/shell:curtain` in FreeRDP,
-/// `alternate shell:s:curtain` in an .rdp file) asks for the curtain. The
-/// server runs no programs, so the field carries client options, separated by
-/// spaces, commas or semicolons.
-pub fn asked(alternate_shell: &str) -> bool {
-    alternate_shell
-        .split([' ', ',', ';'])
-        .any(|option| option.eq_ignore_ascii_case("curtain"))
-}
-
-/// Records what each connecting client asks for.
-pub struct ClientRequest(pub Arc<AtomicBool>);
-
-impl ironrdp_server::ConnectionHandler for ClientRequest {
-    fn on_connection_info(&mut self, info: &ironrdp_server::ConnectionInfo) {
-        let asked = asked(&info.alternate_shell);
-        if asked {
-            info!("the client asked for the curtain");
-        }
-        self.0.store(asked, Ordering::Release);
     }
 }
 
@@ -134,17 +111,6 @@ mod tests {
     use objc2_core_graphics::{CGGetDisplayTransferByFormula, CGMainDisplayID};
 
     use super::*;
-
-    #[test]
-    fn reads_the_request_from_the_alternate_shell() {
-        assert!(asked("curtain"));
-        assert!(asked("Curtain"));
-        assert!(asked("sound;curtain"));
-        assert!(asked("x, curtain"));
-        assert!(!asked(""));
-        assert!(!asked("curtains"));
-        assert!(!asked("explorer.exe"));
-    }
 
     fn maximum(id: u32) -> f32 {
         let mut v = [0f32; 9];

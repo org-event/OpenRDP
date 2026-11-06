@@ -44,6 +44,10 @@ struct Server: Identifiable, Codable, Hashable {
     /// Darken the server Mac's own displays during the session. The OpenRDP
     /// server does it when the RDP alternate shell holds `curtain`.
     var curtain = false
+    /// Keep the session's virtual display five minutes after a disconnect, so
+    /// windows stay where they were on a reconnect. Off, the OpenRDP server
+    /// removes it at once (`nokeep` in the alternate shell).
+    var keepForReconnect = true
     /// Extra FreeRDP options, one per line, for example `/network:lan`.
     var extraArguments = ""
     /// The macOS account on the server Mac, for unlocking FileVault over SSH
@@ -74,6 +78,7 @@ struct Server: Identifiable, Codable, Hashable {
         windowHeight = try c.decodeIfPresent(Int.self, forKey: .windowHeight)
         clipboard = try c.decodeIfPresent(Bool.self, forKey: .clipboard) ?? d.clipboard
         curtain = try c.decodeIfPresent(Bool.self, forKey: .curtain) ?? d.curtain
+        keepForReconnect = try c.decodeIfPresent(Bool.self, forKey: .keepForReconnect) ?? d.keepForReconnect
         extraArguments = try c.decodeIfPresent(String.self, forKey: .extraArguments) ?? d.extraArguments
         macUser = try c.decodeIfPresent(String.self, forKey: .macUser) ?? d.macUser
         sshPort = try c.decodeIfPresent(Int.self, forKey: .sshPort) ?? d.sshPort
