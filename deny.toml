@@ -9,9 +9,10 @@ all-features = true
 version = 2
 yanked = "deny"
 # No release of the rsa crate fixes this one, and it is not a reachable hole
-# in this server.
+# in this server. pin-utils is only archived, with nothing to upgrade to.
 ignore = [
     { id = "RUSTSEC-2023-0071", reason = "rsa via picky/sspi: Marvin timing attack, unfixed in every rsa release. NTLM does not use RSA, and TLS private-key operations go through rustls/aws-lc, not this crate" },
+    { id = "RUSTSEC-2026-0441", reason = "pin-utils via sspi's async-dnssd: archived upstream, not a vulnerability; it goes once sspi drops it" },
 ]
 
 [licenses]
