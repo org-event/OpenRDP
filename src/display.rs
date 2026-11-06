@@ -202,8 +202,8 @@ pub struct Shared {
     session_epoch: AtomicU64,
     /// The client of this connection opened FreeRDP's advanced input channel.
     advanced_input: Arc<AtomicBool>,
-    /// The client of this connection asked for the curtain.
-    curtain_asked: Arc<AtomicBool>,
+    /// What the client of this connection asked for.
+    options: Arc<crate::client_options::ClientOptions>,
 }
 
 /// Time from sending a frame to its acknowledgement, for the stats log.
@@ -264,11 +264,11 @@ impl Shared {
     pub fn new(
         screen: Arc<ScreenState>,
         advanced_input: Arc<AtomicBool>,
-        curtain_asked: Arc<AtomicBool>,
+        options: Arc<crate::client_options::ClientOptions>,
     ) -> Self {
         Self {
             advanced_input,
-            curtain_asked,
+            options,
             events: Mutex::new(None),
             slot: Arc::default(),
             screen,
@@ -551,7 +551,7 @@ impl Session {
         info!(?config, screen = ?shared.screen.get(), "display session started");
         let curtain = match config.curtain {
             crate::curtain::Policy::Always => true,
-            crate::curtain::Policy::Client => shared.curtain_asked.load(Ordering::Acquire),
+            crate::curtain::Policy::Client => shared.options.curtain.load(Ordering::Acquire),
             crate::curtain::Policy::Never => false,
         };
         let curtain = curtain.then(|| {
@@ -566,10 +566,16 @@ impl Session {
             })
         });
 
+        let keep_display = if shared.options.no_keep.load(Ordering::Acquire) {
+            Duration::ZERO
+        } else {
+            config.keep_display
+        };
+
         Ok(Self {
             shared,
             hidpi: config.hidpi,
-            keep_display: config.keep_display,
+            keep_display,
             stop,
             thread: Some(thread),
             cursor_thread: Some(cursor_thread),

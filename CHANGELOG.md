@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- OpenRDP Client: "Wait 5 minutes for a reconnect" per server, on by default. On, the server keeps the session's virtual display five minutes after a disconnect, as before, so windows stay where they were; off, it removes it as soon as the client leaves. The client sends `nokeep` in the alternate shell, and any client can: `/shell:nokeep` in FreeRDP.
+- OpenRDP Client: "Reverse scrolling" in Settings turns the vertical scroll of the trackpad and the mouse the other way in the session. The server does it for clients that send `reversescroll` in the alternate shell.
+
 ### Fixed
 
 - A server whose display pipeline failed stopped listening but never exited: it waited for the update checker, which sleeps for hours, so launchd did not restart it and RDP stayed down until someone killed the process. It now gives background work two seconds and exits.
