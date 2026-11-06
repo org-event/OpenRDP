@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- A server whose display pipeline failed stopped listening but never exited: it waited for the update checker, which sleeps for hours, so launchd did not restart it and RDP stayed down until someone killed the process. It now gives background work two seconds and exits.
+
 ## [1.6.6] - 2026-11-04
 
 ### Changed

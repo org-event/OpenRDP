@@ -304,7 +304,12 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()
         .context("runtime")?;
-    runtime.block_on(serve(argv))
+    let result = runtime.block_on(serve(argv));
+    // The update watcher sleeps for hours on a blocking thread. Waiting for it
+    // kept a server that had stopped serving alive with the port closed, and
+    // launchd restarts the agent only once the process exits.
+    runtime.shutdown_timeout(std::time::Duration::from_secs(2));
+    result
 }
 
 /// First launch of the app, with nobody at a terminal to type the flags.
