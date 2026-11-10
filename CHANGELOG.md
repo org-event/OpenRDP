@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.6.8] - 2026-11-10
+
 ### Fixed
 
 - "Reverse scrolling" turns the horizontal scroll too, as macOS's natural scrolling does. Turning only the vertical one left sideways scrolling against it.
@@ -255,7 +257,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.7...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.8...HEAD
+[1.6.8]: https://github.com/org-event/OpenRDP/compare/v1.6.7...v1.6.8
 [1.6.7]: https://github.com/org-event/OpenRDP/compare/v1.6.6...v1.6.7
 [1.6.6]: https://github.com/org-event/OpenRDP/compare/v1.6.5...v1.6.6
 [1.6.5]: https://github.com/org-event/OpenRDP/compare/v1.6.4...v1.6.5
