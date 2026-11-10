@@ -127,7 +127,14 @@ pub struct VirtualDisplay {
     mirrors: Vec<u32>,
     /// Each physical display's mode before the first mirroring.
     modes: Vec<(u32, CFRetained<CGDisplayMode>)>,
+    /// When the display was last created or resized: macOS reconfigures the
+    /// displays for a while after that and may leave it off the online list.
+    changed: std::time::Instant,
 }
+
+/// How long after a change the display counts as online even when macOS
+/// does not list it.
+const SETTLING: Duration = Duration::from_secs(5);
 
 // SAFETY: the object is only messaged through `&mut self`, one thread at a time;
 // CGVirtualDisplay does its work on its own dispatch queue.
@@ -184,6 +191,7 @@ impl VirtualDisplay {
             mode,
             mirrors: Vec::new(),
             modes: Vec::new(),
+            changed: std::time::Instant::now(),
         };
         this.apply(mode)?;
         this.mirror_physical()?;
@@ -198,9 +206,11 @@ impl VirtualDisplay {
 
     /// False once macOS has dropped the display, which happens when all
     /// displays sleep or the physical ones are unplugged.
+    /// Right after a change it counts as online regardless: taking it for gone
+    /// then made the server create display after display while macOS settled.
     pub fn is_online(&self) -> bool {
         // Not CGDisplayIsOnline: it answers nonzero (-1) for a dropped display.
-        online_displays().is_ok_and(|ids| ids.contains(&self.id))
+        self.changed.elapsed() < SETTLING || is_online(self.id)
     }
 
     pub fn set_mode(&mut self, mode: Mode) -> anyhow::Result<()> {
@@ -208,12 +218,22 @@ impl VirtualDisplay {
             return Ok(());
         }
         // macOS keeps the mode of a mirror set's master fixed, so leave the set
-        // for the change.
-        self.unmirror(false)?;
+        // for the change. While it is still reconfiguring after the last change
+        // it refuses (CoreGraphics 1001 or 1014), so try again a few times.
+        let mut attempt = 1;
+        while let Err(err) = self.unmirror(false) {
+            if attempt == 4 {
+                return Err(err);
+            }
+            warn!(%err, attempt, "cannot resize the virtual display yet; retrying");
+            std::thread::sleep(Duration::from_millis(700));
+            attempt += 1;
+        }
         let applied = self.apply(mode);
         self.mirror_physical()?;
         applied?;
         self.verify();
+        self.changed = std::time::Instant::now();
         info!(id = self.id, ?mode, "virtual display resized");
         Ok(())
     }
@@ -311,7 +331,7 @@ impl VirtualDisplay {
     /// skipped when they mirror again at once, which would only make them resync twice.
     fn unmirror(&mut self, restore: bool) -> anyhow::Result<()> {
         let mirrors = std::mem::take(&mut self.mirrors);
-        configure(|config| {
+        let result = configure(|config| {
             for &id in &mirrors {
                 // SAFETY: config comes from CGBeginDisplayConfiguration.
                 check(unsafe {
@@ -329,7 +349,12 @@ impl VirtualDisplay {
             }
             Ok(())
         })
-        .context("stop mirroring")
+        .context("stop mirroring");
+        // A refused configuration changes nothing: the displays still mirror.
+        if result.is_err() {
+            self.mirrors = mirrors;
+        }
+        result
     }
 }
 
@@ -357,6 +382,31 @@ fn configure(edit: impl FnOnce(CGDisplayConfigRef) -> anyhow::Result<()>) -> any
     // SAFETY: completing the configuration begun above. App-only: reverted when
     // the process exits, so a crash cannot leave the screens mirrored.
     check(unsafe { CGCompleteDisplayConfiguration(config, CGConfigureOption::ForAppOnly) })
+}
+
+/// The main display, once macOS has settled after `gone` was removed: for a
+/// moment after a display goes, CGMainDisplayID can still name it, and capture
+/// of it then fails. Waits up to two seconds, then takes any other online display.
+pub fn main_display(gone: Option<u32>) -> u32 {
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        let online = online_displays().unwrap_or_default();
+        let main = objc2_core_graphics::CGMainDisplayID();
+        if Some(main) != gone && online.contains(&main) {
+            return main;
+        }
+        if std::time::Instant::now() >= deadline {
+            let other = online.into_iter().find(|&id| Some(id) != gone);
+            warn!(main, ?gone, ?other, "the main display is not settled");
+            return other.unwrap_or(main);
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// Whether macOS lists `id` as online.
+pub fn is_online(id: u32) -> bool {
+    online_displays().is_ok_and(|ids| ids.contains(&id))
 }
 
 fn active_displays() -> anyhow::Result<Vec<u32>> {
