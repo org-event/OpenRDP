@@ -11,10 +11,13 @@ struct SettingsView: View {
                 LabeledContent("OpenRDP Client \(Updates.current)") {
                     UpdateControl()
                 }
+                Picker("Канал", selection: $updates.channel) {
+                    ForEach(Updates.Channel.allCases) { Text($0.title).tag($0) }
+                }
             } header: {
                 Text("Обновления")
             } footer: {
-                Text("Новая версия проверяется и при запуске. «Обновить» скачивает её, сверяет контрольную сумму, ставит на место этой и перезапускает клиент.")
+                Text("Новая версия проверяется и при запуске. «Обновить» скачивает её, сверяет контрольную сумму, ставит на место этой и перезапускает клиент. Бета — новые версии раньше всех, для проверки; с беты на стабильные клиент перейдёт, когда выйдет следующая стабильная версия.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Update channels for the server and OpenRDP Client: **Stable**, the default, gets only stable releases; **Beta** also gets betas, tagged `v1.7.0-beta.1` and published as GitHub pre-releases. The server's channel is chosen in the OpenRDP window or with `--update-channel`, the client's in its Settings. A beta back on Stable moves on with the next stable release instead of going back.
+
 ## [1.6.9] - 2026-11-10
 
 ### Fixed

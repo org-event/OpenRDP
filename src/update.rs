@@ -4,6 +4,13 @@
 //! `--update auto` installs without asking. `--update off` (or `--no-update`)
 //! does not check. A postponed version is asked about again the next day, and
 //! a newer tag is asked about straight away.
+//!
+//! Two channels: stable, the default, takes GitHub's latest release, which is
+//! never a pre-release; beta takes the newest release of all, betas
+//! (`v1.7.0-beta.1`, published as pre-releases) included. The choice is kept in
+//! `update-channel` in the support directory, set from the app's window, and
+//! `--update-channel` overrides it for one process. A beta build on the stable
+//! channel waits for the next stable release instead of going back.
 
 use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
@@ -15,6 +22,8 @@ use anyhow::{Context as _, bail};
 use tracing::{info, warn};
 
 const LATEST: &str = "https://api.github.com/repos/org-event/OpenRDP/releases/latest";
+/// The newest releases first, pre-releases included; drafts need a token.
+const RELEASES: &str = "https://api.github.com/repos/org-event/OpenRDP/releases?per_page=30";
 const DOWNLOAD_PREFIX: &str = "https://github.com/org-event/OpenRDP/releases/download/";
 const FIRST_WAIT: Duration = Duration::from_secs(20);
 const INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
@@ -38,6 +47,74 @@ pub fn mode(disabled: bool, flag: Option<&str>) -> anyhow::Result<Mode> {
         Some(other) => bail!("unknown --update {other} (ask, auto, off)"),
         None => Ok(mode_from_env()),
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Channel {
+    Stable,
+    Beta,
+}
+
+impl std::str::FromStr for Channel {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim() {
+            "stable" => Ok(Self::Stable),
+            "beta" => Ok(Self::Beta),
+            other => Err(format!("unknown update channel {other} (stable, beta)")),
+        }
+    }
+}
+
+impl Channel {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Stable => "stable",
+            Self::Beta => "beta",
+        }
+    }
+}
+
+/// `--update-channel`, for this process only.
+static CHANNEL_OVERRIDE: std::sync::OnceLock<Channel> = std::sync::OnceLock::new();
+
+pub fn override_channel(channel: Channel) {
+    let _ = CHANNEL_OVERRIDE.set(channel);
+}
+
+fn channel_path() -> anyhow::Result<PathBuf> {
+    Ok(crate::tls::support_dir()?.join("update-channel"))
+}
+
+/// The channel in use: `--update-channel`, else the saved choice, else stable.
+pub fn channel() -> Channel {
+    if let Some(channel) = CHANNEL_OVERRIDE.get() {
+        return *channel;
+    }
+    channel_path()
+        .ok()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|text| text.parse().ok())
+        .unwrap_or(Channel::Stable)
+}
+
+/// Saves the choice; the next check uses it.
+pub fn set_channel(channel: Channel) -> anyhow::Result<()> {
+    let path = channel_path()?;
+    if channel == Channel::Stable {
+        match std::fs::remove_file(&path) {
+            Err(err) if err.kind() != std::io::ErrorKind::NotFound => {
+                return Err(err).with_context(|| format!("remove {}", path.display()));
+            }
+            _ => {}
+        }
+    } else {
+        std::fs::write(&path, format!("{}\n", channel.name()))
+            .with_context(|| format!("write {}", path.display()))?;
+    }
+    info!(channel = channel.name(), "update channel");
+    Ok(())
 }
 
 fn mode_from_env() -> Mode {
@@ -139,12 +216,71 @@ struct Release {
     checksum: String,
 }
 
+/// The newest release of the channel in use.
 fn fetch_latest() -> anyhow::Result<Option<Release>> {
-    let body = curl(LATEST).context("fetch the latest release")?;
-    let Some(tag) = json_string(&body, "tag_name").map(str::to_owned) else {
+    match channel() {
+        Channel::Stable => {
+            let body = curl(LATEST).context("fetch the latest release")?;
+            release_from(&body)
+        }
+        Channel::Beta => {
+            let body = curl(RELEASES).context("fetch the releases")?;
+            newest_release(&body)
+        }
+    }
+}
+
+/// The highest version in a list of releases that has the Apple Silicon archive.
+fn newest_release(json: &str) -> anyhow::Result<Option<Release>> {
+    let mut best: Option<Release> = None;
+    for part in release_parts(json) {
+        if json_bool(part, "draft") == Some(true) {
+            continue;
+        }
+        let Ok(Some(release)) = release_from(part) else {
+            continue;
+        };
+        if parse_version(&release.tag).is_some()
+            && best
+                .as_ref()
+                .is_none_or(|best| is_newer(&release.tag, &best.tag))
+        {
+            best = Some(release);
+        }
+    }
+    Ok(best)
+}
+
+/// Splits a release list at each `"tag_name"`: every part holds one release's
+/// tag, flags and assets, which follow the tag in GitHub's answer.
+fn release_parts(json: &str) -> Vec<&str> {
+    let key = "\"tag_name\"";
+    let starts: Vec<usize> = json.match_indices(key).map(|(i, _)| i).collect();
+    starts
+        .iter()
+        .enumerate()
+        .map(|(n, &start)| &json[start..starts.get(n + 1).copied().unwrap_or(json.len())])
+        .collect()
+}
+
+fn json_bool(json: &str, key: &str) -> Option<bool> {
+    let pattern = format!("\"{key}\"");
+    let rest = json.get(json.find(&pattern)? + pattern.len()..)?;
+    let rest = rest.trim_start().strip_prefix(':')?.trim_start();
+    if rest.starts_with("true") {
+        Some(true)
+    } else if rest.starts_with("false") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+fn release_from(body: &str) -> anyhow::Result<Option<Release>> {
+    let Some(tag) = json_string(body, "tag_name").map(str::to_owned) else {
         bail!("latest release has no tag");
     };
-    let Some((archive, checksum)) = asset_urls(&body) else {
+    let Some((archive, checksum)) = asset_urls(body) else {
         warn!(%tag, "latest release has no Apple Silicon archive");
         return Ok(None);
     };
@@ -409,13 +545,44 @@ fn is_newer(tag: &str, current: &str) -> bool {
     }
 }
 
-fn parse_version(text: &str) -> Option<(u64, u64, u64)> {
+/// A version as tags carry it: `1.7.0`, or `1.7.0-beta.2` before it.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Version {
+    numbers: (u64, u64, u64),
+    /// No pre-release sorts after every pre-release of the same numbers.
+    release: bool,
+    /// `beta` and its number; `rc` sorts after `beta`.
+    pre: (String, u64),
+}
+
+fn parse_version(text: &str) -> Option<Version> {
     let text = text.trim().trim_start_matches('v');
-    let mut parts = text.split('.');
+    let (numbers, pre) = match text.split_once('-') {
+        Some((numbers, pre)) => (numbers, Some(pre)),
+        None => (text, None),
+    };
+    let mut parts = numbers.split('.');
     let major = parts.next()?.parse().ok()?;
     let minor = parts.next()?.parse().ok()?;
     let patch = parts.next()?.parse().ok()?;
-    parts.next().is_none().then_some((major, minor, patch))
+    if parts.next().is_some() {
+        return None;
+    }
+    let pre = match pre {
+        None => (String::new(), 0),
+        Some(pre) => {
+            let (label, number) = pre.split_once('.').unwrap_or((pre, "0"));
+            if label.is_empty() || !label.chars().all(|c| c.is_ascii_alphabetic()) {
+                return None;
+            }
+            (label.to_ascii_lowercase(), number.parse().ok()?)
+        }
+    };
+    Some(Version {
+        numbers: (major, minor, patch),
+        release: pre.0.is_empty(),
+        pre,
+    })
 }
 
 #[cfg(test)]
@@ -449,6 +616,59 @@ mod tests {
             .as_deref(),
             Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
         );
+    }
+
+    #[test]
+    fn betas_sort_before_their_release() {
+        assert!(is_newer("v1.7.0-beta.1", "1.6.9"));
+        assert!(is_newer("v1.7.0-beta.2", "1.7.0-beta.1"));
+        assert!(is_newer("v1.7.0-beta.10", "1.7.0-beta.9"));
+        assert!(is_newer("v1.7.0-rc.1", "1.7.0-beta.3"));
+        assert!(is_newer("v1.7.0", "1.7.0-beta.3"));
+        assert!(!is_newer("v1.7.0-beta.1", "1.7.0"));
+        // A beta on the stable channel waits for the next stable release.
+        assert!(!is_newer("v1.6.9", "1.7.0-beta.1"));
+        assert!(parse_version("1.7.0-").is_none());
+        assert!(parse_version("1.7.0-beta.x").is_none());
+    }
+
+    #[test]
+    fn the_beta_channel_takes_the_newest_release_with_an_archive() {
+        let asset = |tag: &str| {
+            format!(
+                r#"{{"browser_download_url":"https://github.com/org-event/OpenRDP/releases/download/{tag}/openrdp-{tag}-aarch64-apple-darwin.tar.gz"}},
+                {{"browser_download_url":"https://github.com/org-event/OpenRDP/releases/download/{tag}/openrdp-{tag}-aarch64-apple-darwin.tar.gz.sha256"}}"#
+            )
+        };
+        let json = format!(
+            r#"[{{"url":"a","tag_name":"v1.7.0-beta.2","draft":false,"prerelease":true,"assets":[]}},
+            {{"url":"b","tag_name":"v1.7.0-beta.1","draft":false,"prerelease":true,"assets":[{}]}},
+            {{"url":"c","tag_name":"v1.8.0","draft":true,"prerelease":false,"assets":[{}]}},
+            {{"url":"d","tag_name":"v1.6.9","draft":false,"prerelease":false,"assets":[{}]}}]"#,
+            asset("v1.7.0-beta.1"),
+            asset("v1.8.0"),
+            asset("v1.6.9"),
+        );
+        let release = newest_release(&json).unwrap().unwrap();
+        assert_eq!(release.tag, "v1.7.0-beta.1");
+        assert!(release.archive.contains("/v1.7.0-beta.1/"));
+        assert_eq!("beta".parse::<Channel>(), Ok(Channel::Beta));
+        assert!("nightly".parse::<Channel>().is_err());
+    }
+
+    /// Reads GitHub's real release list; needs the network.
+    #[test]
+    #[ignore]
+    fn the_beta_channel_reads_github() {
+        let release = newest_release(&curl(RELEASES).unwrap()).unwrap().unwrap();
+        let stable = release_from(&curl(LATEST).unwrap()).unwrap().unwrap();
+        assert!(
+            !is_newer(&stable.tag, &release.tag),
+            "{} {}",
+            stable.tag,
+            release.tag
+        );
+        assert!(release.archive.starts_with(DOWNLOAD_PREFIX));
     }
 
     #[test]
