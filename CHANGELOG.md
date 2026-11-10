@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- The Mac's display went dark ten seconds after a connecting client woke it, although the server held off display sleep: that assertion only stops the idle timer, which had long run out on a Mac left alone. When it happened during the server's display configuration, WindowServer was left believing the displays slept and refused every reconfiguration, so sessions lost their size matching until the displays slept and woke again. A connected session now keeps declaring user activity, as a remote user is.
+
 ## [1.6.8] - 2026-11-10
 
 ### Fixed
