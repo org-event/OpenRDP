@@ -9,7 +9,7 @@
 //!   `--curtain client`, the default);
 //! - `nokeep`: remove the virtual display as soon as the client leaves,
 //!   instead of keeping it `--keep-display` seconds for a reconnect;
-//! - `reversescroll`: turn the vertical scroll the other way.
+//! - `reversescroll`: turn the scroll the other way, vertical and horizontal.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

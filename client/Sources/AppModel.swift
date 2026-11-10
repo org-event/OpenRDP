@@ -24,7 +24,7 @@ final class AppModel: ObservableObject {
     @Published var passSystemShortcuts: Bool {
         didSet { defaults.set(passSystemShortcuts, forKey: "passSystemShortcuts") }
     }
-    /// Turn the vertical scroll of the trackpad and the mouse the other way in
+    /// Turn the scroll of the trackpad and the mouse, both axes, the other way in
     /// the session; the OpenRDP server does it (`reversescroll`).
     @Published var reverseScroll: Bool {
         didSet { defaults.set(reverseScroll, forKey: "reverseScroll") }
