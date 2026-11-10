@@ -6,6 +6,10 @@ import Foundation
 /// button in Settings. "Update" downloads the release's disk image, checks it
 /// against the release's SHA-256, puts the new app in place of this one and
 /// starts it.
+///
+/// Two channels: stable takes GitHub's latest release, never a pre-release;
+/// beta takes the newest release of all, betas (`v1.7.0-beta.1`) included. A
+/// beta build back on stable waits for the next stable release.
 @MainActor
 final class Updates: ObservableObject {
     struct Available: Equatable {
@@ -23,9 +27,28 @@ final class Updates: ObservableObject {
         case failed(String)
     }
 
+    enum Channel: String, CaseIterable, Identifiable {
+        case stable, beta
+        var id: String { rawValue }
+        var title: String { self == .stable ? "Стабильные" : "Бета" }
+    }
+
     @Published private(set) var state = State.idle
+    @Published var channel: Channel {
+        didSet {
+            UserDefaults.standard.set(channel.rawValue, forKey: "updateChannel")
+            if case .updating = state { return }
+            state = .idle
+        }
+    }
+
+    init() {
+        channel = UserDefaults.standard.string(forKey: "updateChannel").flatMap(Channel.init(rawValue:)) ?? .stable
+    }
 
     private static let latest = URL(string: "https://api.github.com/repos/org-event/OpenRDP/releases/latest")!
+    /// The newest releases first, pre-releases included.
+    private static let all = URL(string: "https://api.github.com/repos/org-event/OpenRDP/releases?per_page=30")!
     private static let downloads = "https://github.com/org-event/OpenRDP/releases/download/"
 
     /// "1.6.4", from the bundle; "0.1.0" in a local build.
@@ -40,12 +63,24 @@ final class Updates: ObservableObject {
         if !quiet { state = .checking }
         Task {
             do {
-                var request = URLRequest(url: Self.latest)
+                let beta = channel == .beta
+                var request = URLRequest(url: beta ? Self.all : Self.latest)
                 request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
                 request.setValue("OpenRDP-Client/\(Self.current)", forHTTPHeaderField: "User-Agent")
                 let (data, _) = try await URLSession.shared.data(for: request)
-                let release = try JSONDecoder().decode(Release.self, from: data)
-                let version = release.tag.hasPrefix("v") ? String(release.tag.dropFirst()) : release.tag
+                let release: Release
+                if beta {
+                    let releases = try JSONDecoder().decode([Release].self, from: data)
+                    let usable = releases.filter { $0.draft != true && $0.hasClient }
+                    guard let newest = usable.max(by: { Self.isNewer($1.version, than: $0.version) }) else {
+                        if !quiet { state = .current }
+                        return
+                    }
+                    release = newest
+                } else {
+                    release = try JSONDecoder().decode(Release.self, from: data)
+                }
+                let version = release.version
                 guard Self.isNewer(version, than: Self.current) else {
                     if !quiet { state = .current }
                     return
@@ -54,7 +89,7 @@ final class Updates: ObservableObject {
                     release.assets.first { $0.name == name }
                         .flatMap { $0.url.hasPrefix(Self.downloads) ? URL(string: $0.url) : nil }
                 }
-                guard let image = release.assets.first(where: { $0.name.hasPrefix("openrdp-client-") && $0.name.hasSuffix("-universal.dmg") }),
+                guard let image = release.clientImage,
                       let imageURL = url(image.name), let checksumURL = url(image.name + ".sha256") else {
                     if !quiet { state = .failed("В релизе \(release.tag) нет образа клиента.") }
                     return
@@ -146,15 +181,28 @@ final class Updates: ObservableObject {
         guard p.terminationStatus == 0 else { throw UpdateError("\((tool as NSString).lastPathComponent) завершился с кодом \(p.terminationStatus)") }
     }
 
-    /// Whether dotted version `a` is newer than `b`.
+    /// Whether version `a` is newer than `b`: dotted numbers, and a release
+    /// after its pre-releases (`1.7.0-beta.2` < `1.7.0-rc.1` < `1.7.0`).
     nonisolated static func isNewer(_ a: String, than b: String) -> Bool {
-        let parts = { (v: String) in v.split(separator: ".").map { Int($0.prefix { $0.isNumber }) ?? 0 } }
-        let (x, y) = (parts(a), parts(b))
+        let split = { (v: String) -> ([Int], String?, Int) in
+            let halves = v.split(separator: "-", maxSplits: 1).map(String.init)
+            let numbers = (halves.first ?? "").split(separator: ".").map { Int($0.prefix { $0.isNumber }) ?? 0 }
+            guard halves.count == 2 else { return (numbers, nil, 0) }
+            let pre = halves[1].split(separator: ".", maxSplits: 1).map(String.init)
+            return (numbers, pre[0].lowercased(), pre.count == 2 ? Int(pre[1]) ?? 0 : 0)
+        }
+        let (x, xLabel, xNumber) = split(a)
+        let (y, yLabel, yNumber) = split(b)
         for i in 0..<max(x.count, y.count) {
             let (l, r) = (i < x.count ? x[i] : 0, i < y.count ? y[i] : 0)
             if l != r { return l > r }
         }
-        return false
+        switch (xLabel, yLabel) {
+        case (nil, nil): return false
+        case (nil, _): return true
+        case (_, nil): return false
+        case let (l?, r?): return l != r ? l > r : xNumber > yNumber
+        }
     }
 
     private struct UpdateError: LocalizedError {
@@ -164,11 +212,19 @@ final class Updates: ObservableObject {
 
     private struct Release: Decodable {
         let tag: String
+        let draft: Bool?
         let assets: [Asset]
         enum CodingKeys: String, CodingKey {
             case tag = "tag_name"
+            case draft
             case assets
         }
+
+        var version: String { tag.hasPrefix("v") ? String(tag.dropFirst()) : tag }
+        var clientImage: Asset? {
+            assets.first { $0.name.hasPrefix("openrdp-client-") && $0.name.hasSuffix("-universal.dmg") }
+        }
+        var hasClient: Bool { clientImage != nil }
     }
 
     private struct Asset: Decodable {

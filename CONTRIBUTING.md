@@ -38,6 +38,12 @@ Dependency licenses and advisories are checked with [cargo-deny](https://github.
 - Code style follows the existing code: explain *why* in comments, not what; every `unsafe` block gets a `// SAFETY:` comment.
 - Add a line to `CHANGELOG.md` under "Unreleased" for user-visible changes.
 
+## Branches and releases
+
+- `dev` is where work lands. Pull requests go to `dev`.
+- Betas are tagged from `dev`: set the version in `Cargo.toml` to `1.7.0-beta.1` and push the tag `v1.7.0-beta.1`. The release workflow publishes a tag with a pre-release part as a GitHub pre-release, which only servers and clients on the beta channel install.
+- Once a beta has been tried, `dev` is merged into `main` and the stable release (`v1.7.0`) is tagged there. Stable users get only these.
+
 ## Reporting bugs
 
 Use the bug report template. Attach the relevant part of `~/Library/Logs/openrdp.log` (or the terminal output, with `RUST_LOG=openrdp=debug` if you can) and the output of `scripts/openrdp-doctor`. Remove anything private from them first.

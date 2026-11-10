@@ -98,6 +98,10 @@ OPTIONS:
                       ask before installing a newer GitHub release [default: ask];
                       auto installs it, off does not check
   --no-update         same as --update off
+  --update-channel <stable|beta>
+                      stable releases only, or betas too; overrides the
+                      choice in the app's window [default: that choice, or
+                      stable]
 
 The accounts live in ~/Library/Application Support/openrdp/users; --user and
 --pass only add the first one. Password may also come from OPENRDP_PASSWORD.
@@ -187,6 +191,10 @@ fn parse_args(args: Vec<std::ffi::OsString>) -> anyhow::Result<Option<Args>> {
         update: {
             let disabled = args.contains("--no-update");
             let flag: Option<String> = args.opt_value_from_str("--update")?;
+            let channel: Option<update::Channel> = args.opt_value_from_str("--update-channel")?;
+            if let Some(channel) = channel {
+                update::override_channel(channel);
+            }
             update::mode(disabled, flag.as_deref())?
         },
     };
