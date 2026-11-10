@@ -170,6 +170,15 @@ fn handle(message: &str) {
             Err(err) => format!("app.removed({})", js_string(&format!("{err:#}"))),
         }),
         "log" => eprintln!("settings page: {}", arg(0)),
+        "channel" => match arg(0).parse() {
+            Ok(channel) => {
+                let problem = crate::update::set_channel(channel)
+                    .err()
+                    .map(|err| format!("{err:#}"));
+                send_state(problem);
+            }
+            Err(err) => send_state(Some(err)),
+        },
         "update-check" => in_background(|| match crate::update::newer_release() {
             Ok(tag) => format!(
                 "app.update({{\"newer\":{}}})",
@@ -224,8 +233,9 @@ fn send_state(problem: Option<String>) {
         .collect();
     let running = crate::service::agent_running();
     let script = format!(
-        "app.state({{\"version\":{},\"running\":{running},\"accounts\":[{}],\"problem\":{}}})",
+        "app.state({{\"version\":{},\"channel\":{},\"running\":{running},\"accounts\":[{}],\"problem\":{}}})",
         js_string(env!("CARGO_PKG_VERSION")),
+        js_string(crate::update::channel().name()),
         accounts.join(","),
         problem
             .as_deref()

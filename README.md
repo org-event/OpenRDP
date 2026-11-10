@@ -84,6 +84,8 @@ After updating the build, run `install` again. It signs the app with a local cer
 
 While the server is running it checks GitHub for a newer release. A dialog asks before installing; the connection drops for a moment while the new build replaces the app and the agent restarts. `--update auto` installs without asking, `--update off` does not check. "Later" asks again the next day.
 
+Updates come from one of two channels, chosen in the OpenRDP window (and in OpenRDP Client's Settings): **Stable**, the default, gets only stable releases; **Beta** also gets betas (`v1.7.0-beta.1`, published as pre-releases) to try new versions first. A beta install back on Stable moves on with the next stable release. `--update-channel stable|beta` overrides the window's choice.
+
 `install` also installs a LaunchDaemon, `com.openrdp.broker`, and a login-window LaunchAgent, `com.openrdp.loginwindow`, and asks for an administrator password once. While the Mac shows the login window, launchd starts this same server inside that window's session. It runs as root there, as every login-window agent does, and the Screen Recording and Accessibility grants already given to OpenRDP apply. The stream is the physical display at its current size. Keys typed in the RDP client go to the login window, including the Mac password. After a successful login that process exits and the per-user LaunchAgent takes over; the client connects again. Logging out returns the server to the login window.
 
 ### RDP accounts

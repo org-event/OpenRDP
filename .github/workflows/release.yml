@@ -71,7 +71,14 @@ jobs:
 
           See CHANGELOG.md for the changes.
           EOF
-          gh release create "$GITHUB_REF_NAME" \
+          # A tag with a pre-release part (v1.7.0-beta.1) is a beta: a pre-release,
+          # which only servers and clients on the beta channel see.
+          prerelease=()
+          case "$GITHUB_REF_NAME" in
+            *-*) prerelease=(--prerelease)
+                 printf '\nThis is a beta, for testing. Servers and clients on the stable channel do not get it.\n' >> notes.md ;;
+          esac
+          gh release create "$GITHUB_REF_NAME" "${prerelease[@]}" \
             "$ASSET.dmg" "$ASSET.dmg.sha256" \
             "$CLIENT_ASSET.dmg" "$CLIENT_ASSET.dmg.sha256" \
             "$ASSET.tar.gz" "$ASSET.tar.gz.sha256" \

@@ -54,6 +54,8 @@
   form.inline .fields.one { grid-template-columns: 1fr; }
   input { font: inherit; padding: 6px 9px; border-radius: 7px; border: .5px solid var(--line);
     background: var(--field); color: var(--text); outline: none; -webkit-user-select: text; min-width: 0; }
+  select { font: inherit; padding: 4px 8px; border-radius: 7px; border: .5px solid var(--line);
+    background: var(--field); color: var(--text); outline: none; }
   input:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
   .buttons { display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
   .buttons .error { flex: 1; color: var(--fail); font-size: 12px; }
@@ -105,6 +107,8 @@ const T = ru ? {
   install: "Установить", installing: "Скачиваю и устанавливаю…",
   installed: v => `Установлена ${v.replace(/^v/, "")}. Сервер перезапущен, окно откроется заново.`,
   updateHint: "Сервер и сам проверяет обновления раз в шесть часов.",
+  channel: "Канал", stable: "Стабильные", beta: "Бета",
+  channelHint: "Бета — новые версии раньше всех, для проверки. С беты на стабильные сервер перейдёт, когда выйдет следующая стабильная версия.",
 } : {
   running: "The server is running and waiting for connections", stopped: "The server is not running",
   accounts: "RDP accounts", accountsHint: "Changes apply from the next connection",
@@ -126,11 +130,13 @@ const T = ru ? {
   install: "Install", installing: "Downloading and installing…",
   installed: v => `${v.replace(/^v/, "")} is installed. The server restarted; the window opens again.`,
   updateHint: "The server also checks for updates every six hours.",
+  channel: "Channel", stable: "Stable", beta: "Beta",
+  channelHint: "Beta gets new versions first, for testing. Back on stable, the server moves on with the next stable release.",
 };
 const SEP = "\u001f";
 const send = (...parts) => window.webkit.messageHandlers.openrdp.postMessage(parts.join(SEP));
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
-let state = { version: "", running: false, accounts: [] };
+let state = { version: "", channel: "stable", running: false, accounts: [] };
 let editing = null;     // { kind: "add" | "password" | "rename" | "remove", name }
 let checks = null;      // null while checking
 let removal = "idle";   // idle | confirm | working
@@ -218,6 +224,12 @@ function updateBlock() {
   }
 }
 
+function channelBlock() {
+  const option = c => `<option value="${c}" ${state.channel === c ? "selected" : ""}>${T[c]}</option>`;
+  return `<div class="row"><div class="grow">${T.channel}</div>
+    <select onchange="update={phase:'idle'};send('channel', this.value)">${option("stable")}${option("beta")}</select></div>`;
+}
+
 function render() {
   const rows = state.accounts.map(a => {
     const open = editing && editing.name === a && editing.kind !== "add";
@@ -243,8 +255,8 @@ function render() {
     <header><img src="data:image/png;base64,{{ICON}}" alt="">
       <div><h1>OpenRDP <span class="muted" style="font-weight:400;font-size:15px">${esc(state.version)}</span></h1>
       <div class="status"><span class="dot ${state.running ? "on" : "off"}"></span>${state.running ? T.running : T.stopped}</div></div></header>
-    <div class="card">${updateBlock()}</div>
-    <div class="muted" style="margin:6px 4px 0;font-size:12px">${T.updateHint}</div>
+    <div class="card">${updateBlock()}${channelBlock()}</div>
+    <div class="muted" style="margin:6px 4px 0;font-size:12px">${T.updateHint} ${T.channelHint}</div>
     <h2><span>${T.accounts}</span><button class="link" onclick='edit("add", "")'>＋ ${T.add}</button></h2>
     <div class="card">${editing && editing.kind === "add" ? accountForm() : ""}${rows || `<div class="placeholder">${T.none}</div>`}</div>
     <div class="muted" style="margin:6px 4px 0;font-size:12px">${T.accountsHint}</div>
