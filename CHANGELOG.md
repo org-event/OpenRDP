@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-10
+
 ### Added
 
 - Update channels for the server and OpenRDP Client: **Stable**, the default, gets only stable releases; **Beta** also gets betas, tagged `v1.7.0-beta.1` and published as GitHub pre-releases. The server's channel is chosen in the OpenRDP window or with `--update-channel`, the client's in its Settings. A beta back on Stable moves on with the next stable release instead of going back.
@@ -267,7 +269,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.9...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/org-event/OpenRDP/compare/v1.6.9...v1.7.0
 [1.6.9]: https://github.com/org-event/OpenRDP/compare/v1.6.8...v1.6.9
 [1.6.8]: https://github.com/org-event/OpenRDP/compare/v1.6.7...v1.6.8
 [1.6.7]: https://github.com/org-event/OpenRDP/compare/v1.6.6...v1.6.7
