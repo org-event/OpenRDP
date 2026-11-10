@@ -25,7 +25,7 @@ use ironrdp_server::{
     ServerEventSender, ServerResult,
 };
 use ironrdp_svc::ChannelFlags;
-use objc2_core_graphics::{CGDisplayBounds, CGMainDisplayID};
+use objc2_core_graphics::CGDisplayBounds;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::{debug, error, info, warn};
 
@@ -279,6 +279,21 @@ impl Shared {
         }
     }
 
+    /// Called when capture finds `id` gone: unless the screen moved on in the
+    /// meantime, drops the virtual display if it is that one and streams the main display.
+    fn drop_vanished(&self, id: u32, hidpi: bool) {
+        let mut slot = self.virtual_display.lock().expect("poisoned");
+        if self.screen.get().display_id != id {
+            return;
+        }
+        let display = slot.take_if(|display| display.id() == id);
+        drop(slot);
+        match display {
+            Some(display) => self.forget_virtual_display(Some(display), hidpi),
+            None => self.show_main_display(Some(id), hidpi),
+        }
+    }
+
     /// Removes the virtual display and streams the main one again.
     fn remove_virtual_display(&self, hidpi: bool) {
         let display = self.virtual_display.lock().expect("poisoned").take();
@@ -287,8 +302,15 @@ impl Shared {
 
     fn forget_virtual_display(&self, display: Option<VirtualDisplay>, hidpi: bool) {
         let Some(display) = display else { return };
+        let gone = display.id();
         drop(display);
-        match Screen::of_display(CGMainDisplayID(), hidpi) {
+        self.show_main_display(Some(gone), hidpi);
+    }
+
+    /// Streams the main display, never `gone`, which macOS may still call main.
+    fn show_main_display(&self, gone: Option<u32>, hidpi: bool) {
+        let main = crate::virtual_display::main_display(gone);
+        match Screen::of_display(main, hidpi) {
             Ok(screen) => self.screen.set(screen),
             Err(err) => warn!(%err, "cannot describe the main display"),
         }
@@ -392,19 +414,23 @@ impl MacDisplay {
             Ok(screen) => self.shared.screen.set(screen),
             Err(err) => {
                 warn!("cannot match the client size, streaming the main display: {err:#}");
-                self.shared.virtual_display.lock().expect("poisoned").take();
+                let display = self.shared.virtual_display.lock().expect("poisoned").take();
                 self.wanted = None;
-                self.restore_main_screen();
+                if display.is_some() {
+                    self.shared
+                        .forget_virtual_display(display, self.config.hidpi);
+                } else {
+                    self.restore_main_screen();
+                }
             }
         }
         self.shared.slot.poke();
     }
 
     fn restore_main_screen(&self) {
-        match Screen::of_display(CGMainDisplayID(), self.config.hidpi) {
-            Ok(screen) => self.shared.screen.set(screen),
-            Err(err) => warn!(%err, "cannot describe the main display"),
-        }
+        let shown = self.shared.screen.get().display_id;
+        let gone = (!crate::virtual_display::is_online(shown)).then_some(shown);
+        self.shared.show_main_display(gone, self.config.hidpi);
     }
 }
 
@@ -662,6 +688,7 @@ impl Video {
         slot: &Arc<FrameSlot>,
         avc444: bool,
         one_stream: bool,
+        shown: &ScreenState,
     ) -> anyhow::Result<Self> {
         let surface = screen.surface();
         let content = (usize::from(screen.desktop.0), usize::from(screen.desktop.1));
@@ -680,6 +707,7 @@ impl Video {
                 crate::capture::PIXEL_FORMAT_420F
             };
             Box::new(Self::capture(
+                shown,
                 screen.display_id,
                 content,
                 buffer,
@@ -759,6 +787,7 @@ impl Video {
     }
 
     fn capture(
+        shown: &ScreenState,
         display_id: u32,
         content: (usize, usize),
         buffer: (usize, usize),
@@ -777,7 +806,8 @@ impl Video {
                 Arc::clone(slot),
             ) {
                 Ok(capture) => return Ok(capture),
-                Err(err) if attempt < 3 => {
+                // No retrying a display the server has stopped showing.
+                Err(err) if attempt < 3 && shown.get().display_id == display_id => {
                     warn!(%err, attempt, "capture did not start, retrying");
                     attempt += 1;
                 }
@@ -819,6 +849,9 @@ impl Pipeline {
         let mut frames: u64 = 0;
         let mut skipped: u64 = 0;
         let mut failures: u64 = 0;
+        // Video sources that would not open in a row; a vanished display is
+        // replaced by the main one a few times before the session gives up.
+        let mut open_failures = 0;
         let mut stalls: u64 = 0;
         let mut encode_time = Duration::ZERO;
         let mut bytes: u64 = 0;
@@ -865,7 +898,35 @@ impl Pipeline {
                 last = None;
                 while slot.take().is_some() {}
                 let one_stream = self.shared.advanced_input.load(Ordering::Acquire);
-                let opened = Video::open(screen, &self.config, slot, avc444, one_stream)?;
+                let opened = match Video::open(
+                    screen,
+                    &self.config,
+                    slot,
+                    avc444,
+                    one_stream,
+                    &self.shared.screen,
+                ) {
+                    Ok(opened) => opened,
+                    // The screen moved on while the capture started: open the new one.
+                    Err(err) if self.shared.screen.snapshot().0 != current => {
+                        debug!(%err, "the screen changed while the video source opened");
+                        generation = u64::MAX;
+                        continue;
+                    }
+                    Err(err)
+                        if open_failures < 3
+                            && !crate::virtual_display::is_online(screen.display_id) =>
+                    {
+                        open_failures += 1;
+                        warn!(%err, display = screen.display_id, "the display is gone; streaming the main one");
+                        self.shared
+                            .drop_vanished(screen.display_id, self.config.hidpi);
+                        generation = u64::MAX;
+                        continue;
+                    }
+                    Err(err) => return Err(err),
+                };
+                open_failures = 0;
                 opened.set_bitrate(rate.current());
                 video = Some(opened);
                 generation = current;

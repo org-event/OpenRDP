@@ -227,10 +227,12 @@ impl MacInput {
     }
 
     fn scroll(&self, vertical: i32, horizontal: i32) {
-        let vertical = if self.options.reverse_scroll.load(Ordering::Acquire) {
-            -vertical
+        // Both axes, as macOS's natural scrolling does: turning only the vertical
+        // one left sideways scrolling against it.
+        let (vertical, horizontal) = if self.options.reverse_scroll.load(Ordering::Acquire) {
+            (-vertical, -horizontal)
         } else {
-            vertical
+            (vertical, horizontal)
         };
         // RDP wheel units are 120 per notch; a third of that in pixels feels like
         // a native notch and keeps trackpad deltas smooth.

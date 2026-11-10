@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- "Reverse scrolling" turns the horizontal scroll too, as macOS's natural scrolling does. Turning only the vertical one left sideways scrolling against it.
+- A connection could fail for a minute or two after the client's resize was refused (CoreGraphics error 1014, as when the Mac's monitor wakes at that moment): the server removed its virtual display and then captured it anyway, since macOS still named it the main display, and the session ended. The server now waits for macOS to settle on a live main display, and a session whose display vanishes streams the main one instead of ending.
+
 ## [1.6.7] - 2026-11-06
 
 ### Added
