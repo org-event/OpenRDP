@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.6.9] - 2026-11-10
+
 ### Fixed
 
 - The Mac's display went dark ten seconds after a connecting client woke it, although the server held off display sleep: that assertion only stops the idle timer, which had long run out on a Mac left alone. When it happened during the server's display configuration, WindowServer was left believing the displays slept and refused every reconfiguration, so sessions lost their size matching until the displays slept and woke again. A connected session now keeps declaring user activity, as a remote user is.
@@ -261,7 +263,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.8...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.6.9...HEAD
+[1.6.9]: https://github.com/org-event/OpenRDP/compare/v1.6.8...v1.6.9
 [1.6.8]: https://github.com/org-event/OpenRDP/compare/v1.6.7...v1.6.8
 [1.6.7]: https://github.com/org-event/OpenRDP/compare/v1.6.6...v1.6.7
 [1.6.6]: https://github.com/org-event/OpenRDP/compare/v1.6.5...v1.6.6
