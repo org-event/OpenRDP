@@ -414,6 +414,7 @@ impl MacDisplay {
             Ok(screen) => self.shared.screen.set(screen),
             Err(err) => {
                 warn!("cannot match the client size, streaming the main display: {err:#}");
+                crate::virtual_display::change_identity();
                 let display = self.shared.virtual_display.lock().expect("poisoned").take();
                 self.wanted = None;
                 if display.is_some() {
