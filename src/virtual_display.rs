@@ -166,10 +166,11 @@ impl VirtualDisplay {
                 f64::from(points_h) * 25.4 / 110.0,
             );
             let _: () = msg_send![&*descriptor, setSizeInMillimeters: size];
-            // A stable identity lets macOS remember the arrangement between sessions.
+            // A stable identity lets macOS remember the arrangement between
+            // sessions; see `change_identity` for when it changes.
             let _: () = msg_send![&*descriptor, setVendorID: 0x6d72_u32];
             let _: () = msg_send![&*descriptor, setProductID: 0x6470_u32];
-            let _: () = msg_send![&*descriptor, setSerialNum: 1_u32];
+            let _: () = msg_send![&*descriptor, setSerialNum: serial()];
             let queue_object: *const AnyObject = (&*queue as *const DispatchQueue).cast();
             let _: () = msg_send![&*descriptor, setQueue: queue_object];
 
@@ -401,6 +402,49 @@ pub fn main_display(gone: Option<u32>) -> u32 {
             return other.unwrap_or(main);
         }
         std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn serial_path() -> anyhow::Result<std::path::PathBuf> {
+    Ok(crate::tls::support_dir()?.join("virtual-display-serial"))
+}
+
+/// The serial number of the virtual display, kept between runs; 1 at first.
+fn serial() -> u32 {
+    serial_path()
+        .ok()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|text| text.trim().parse().ok())
+        .filter(|&serial| serial != 0)
+        .unwrap_or(1)
+}
+
+/// Gives the next virtual display a new identity, after one could not be
+/// configured. macOS remembers each display set's arrangement by identity
+/// and puts it back when the display returns. Once a failed configuration
+/// left it remembering the virtual display beside the physical one instead
+/// of mirrored, every later virtual display came back that way and every
+/// reconfiguration was refused (CoreGraphics 1001), across restarts, until
+/// the arrangement was deleted from WindowServer's preferences. A display
+/// macOS has not seen gets no remembered arrangement.
+pub fn change_identity() {
+    let old = serial();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() ^ (d.as_secs() as u32))
+        .unwrap_or(2);
+    let new = match nanos {
+        0 | 1 => 2,
+        n if n == old => n.wrapping_add(1).max(2),
+        n => n,
+    };
+    let saved = serial_path().and_then(|path| {
+        std::fs::write(&path, format!("{new}\n"))
+            .with_context(|| format!("write {}", path.display()))
+    });
+    match saved {
+        Ok(()) => warn!(old, new, "the virtual display gets a new identity"),
+        Err(err) => warn!(%err, "cannot change the virtual display's identity"),
     }
 }
 

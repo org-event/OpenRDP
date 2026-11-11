@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.1-beta.1] - 2026-11-11
+
+### Fixed
+
+- Size matching could stop for good, across restarts: macOS remembers each display set's arrangement by the displays' identity, and once a failed configuration left it remembering the virtual display beside the Mac's monitor instead of mirrored, it put every later virtual display back that way and refused every reconfiguration (CoreGraphics 1001). When a reconfiguration fails, the server now gives the next virtual display a new identity, which macOS has no arrangement for.
+
 ## [1.7.0] - 2026-11-10
 
 ### Added
@@ -269,7 +275,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.1...HEAD
+[1.7.1-beta.1]: https://github.com/org-event/OpenRDP/compare/v1.7.0...v1.7.1-beta.1
 [1.7.0]: https://github.com/org-event/OpenRDP/compare/v1.6.9...v1.7.0
 [1.6.9]: https://github.com/org-event/OpenRDP/compare/v1.6.8...v1.6.9
 [1.6.8]: https://github.com/org-event/OpenRDP/compare/v1.6.7...v1.6.8
