@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct ServerEditor: View {
-    @Environment(\.dismiss) private var dismiss
+    // presentationMode, not dismiss: it is there on macOS 11 too.
+    @Environment(\.presentationMode) private var presentationMode
     @State private var server: Server
     @State private var password: String
     @State private var macPassword: String
@@ -35,24 +36,24 @@ struct ServerEditor: View {
         VStack(spacing: 0) {
             Form {
                 Section {
-                    TextField("Имя", text: $server.name, prompt: Text("Mac-Ivan"))
-                    TextField("Адрес", text: $server.host, prompt: Text("192.168.2.100 или mac.local"))
-                    TextField("Порт", value: $server.port, format: .number.grouping(.never))
+                    promptField("Имя", text: $server.name, prompt: "Mac-Ivan")
+                    promptField("Адрес", text: $server.host, prompt: "192.168.2.100 или mac.local")
+                    numberField("Порт", value: $server.port)
                     TextField("Пользователь", text: $server.user)
-                    SecureField("Пароль", text: $password, prompt: Text("хранится в Связке ключей"))
+                    promptSecureField("Пароль", text: $password, prompt: "хранится в Связке ключей")
                 }
                 Section {
-                    TextField("Пользователь Mac", text: $server.macUser, prompt: Text("учётная запись macOS"))
-                    SecureField("Пароль Mac", text: $macPassword, prompt: Text("хранится в Связке ключей"))
-                    TextField("Порт SSH", value: $server.sshPort, format: .number.grouping(.never))
-                    TextField("MAC-адрес", text: $server.wakeAddress, prompt: Text("узнается сам, когда Mac в сети"))
+                    promptField("Пользователь Mac", text: $server.macUser, prompt: "учётная запись macOS")
+                    promptSecureField("Пароль Mac", text: $macPassword, prompt: "хранится в Связке ключей")
+                    numberField("Порт SSH", value: $server.sshPort)
+                    promptField("MAC-адрес", text: $server.wakeAddress, prompt: "узнается сам, когда Mac в сети")
                 } header: {
                     Text("После включения")
                 } footer: {
                     Text("После пропадания питания Mac с FileVault ждёт пароль, и RDP недоступен. Клиент разблокирует диск по SSH (macOS 26 и новее, включите «Удалённый вход»), будит Mac по Wake-on-LAN и входит в «Общий экран» этой учётной записью.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).fg(.secondary)
                 }
-                Section("Сеанс") {
+                Section(header: Text("Сеанс")) {
                     Picker("Видео", selection: $server.codec) {
                         ForEach(Server.Codec.allCases) { Text($0.title).tag($0) }
                     }
@@ -60,11 +61,11 @@ struct ServerEditor: View {
                     if !server.fullscreen {
                         Toggle("Задать размер окна", isOn: $customSize)
                         if customSize {
-                            LabeledContent("Размер") {
+                            LabeledRow(title: "Размер") {
                                 HStack {
-                                    TextField("Ширина", value: $server.windowWidth, format: .number.grouping(.never))
+                                    numberField("Ширина", value: $server.windowWidth)
                                     Text("×")
-                                    TextField("Высота", value: $server.windowHeight, format: .number.grouping(.never))
+                                    numberField("Высота", value: $server.windowHeight)
                                 }
                                 .labelsHidden()
                                 .frame(width: 160)
@@ -81,21 +82,21 @@ struct ServerEditor: View {
                 }
                 Section {
                     TextEditor(text: $server.extraArguments)
-                        .font(.body.monospaced())
+                        .font(.system(.body, design: .monospaced))
                         .frame(height: 60)
                 } header: {
                     Text("Дополнительные параметры FreeRDP")
                 } footer: {
                     Text("По одному на строку, например /network:lan. Добавляются после /v /u /gfx:\(server.codec.rawValue) /dynamic-resolution /cert:\(server.certificate.rawValue).")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).fg(.secondary)
                 }
             }
-            .formStyle(.grouped)
+            .groupedForm()
 
             HStack {
-                if let problem { Text(problem).foregroundStyle(.secondary).font(.callout) }
+                if let problem { Text(problem).fg(.secondary).font(.callout) }
                 Spacer()
-                Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Отмена") { presentationMode.wrappedValue.dismiss() }.keyboardShortcut(.cancelAction)
                 Button(isNew ? "Добавить" : "Сохранить") { save() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(problem != nil)
@@ -117,6 +118,6 @@ struct ServerEditor: View {
         Keychain.setPassword(password, for: server.id)
         Keychain.setPassword(macPassword, for: server.id, .mac)
         onSave(server)
-        dismiss()
+        presentationMode.wrappedValue.dismiss()
     }
 }

@@ -114,7 +114,7 @@ sdl-freerdp /v:127.0.0.1 /u:me /p:secret /cert:ignore /gfx:avc420
 
 В [`client/`](client) лежит небольшое приложение для Mac (SwiftUI). Оно подключается к серверам OpenRDP через `sdl-freerdp` из FreeRDP, так что команду FreeRDP не нужно набирать вручную. Полная сборка несёт внутри собственный FreeRDP 3.32.2 с SDL3, FFmpeg (только H.264) и OpenSSL, и на клиентском Маке больше ничего не нужно. Без неё приложение берёт FreeRDP из Homebrew (`brew install freerdp`): `sdl-freerdp` ищется в `/usr/local/bin` (Intel) и `/opt/homebrew/bin` (Apple Silicon), другой путь можно задать в настройках. Если `sdl-freerdp` не найден, приложение сразу об этом пишет.
 
-Для установки скачайте `openrdp-client-<версия>-universal.dmg` со страницы [релизов](https://github.com/org-event/OpenRDP/releases). Приложение работает на Маках с Apple Silicon и Intel, macOS 13 и новее. Перетащите OpenRDP Client в «Программы». Приложение не нотаризовано, поэтому один раз снимите с него карантин:
+Для установки скачайте `openrdp-client-<версия>-universal.dmg` со страницы [релизов](https://github.com/org-event/OpenRDP/releases). Приложение работает на Маках с Apple Silicon и Intel, macOS 11 Big Sur и новее. Перетащите OpenRDP Client в «Программы». Приложение не нотаризовано, поэтому один раз снимите с него карантин:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/OpenRDP Client.app"

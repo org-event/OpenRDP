@@ -8,23 +8,19 @@ struct ContentView: View {
     @State private var editing: Server?
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $selection) {
+        SplitView {
+            connectOnDoubleClick(List(selection: $selection) {
                 ForEach(store.servers) { server in
-                    ServerRow(server: server, session: model.session(for: server), status: model.status(of: server))
+                    legacyDoubleClick(ServerRow(server: server, session: model.session(for: server), status: model.status(of: server))
                         .tag(server.id)
-                        .contextMenu { menu(for: server) }
+                        .contextMenu { menu(for: server) }, server: server)
                 }
                 .onMove { store.move(from: $0, to: $1) }
-            }
-            .navigationSplitViewColumnWidth(min: 200, ideal: 230)
+            })
             .toolbar {
                 ToolbarItem {
                     Button { editing = Server() } label: { Label("Добавить Mac", systemImage: "plus") }
                 }
-            }
-            .contextMenu(forSelectionType: UUID.self) { _ in } primaryAction: { ids in
-                ids.compactMap { id in store.servers.first { $0.id == id } }.forEach(model.connect)
             }
         } detail: {
             VStack(spacing: 0) {
@@ -43,14 +39,27 @@ struct ContentView: View {
                 selection = saved.id
             }
         }
-        .alert("Не удалось подключиться", isPresented: Binding(
-            get: { model.launchError != nil }, set: { if !$0 { model.launchError = nil } })
-        ) {
-            Button("OK") {}
-        } message: {
-            Text(model.launchError ?? "")
-        }
+        .messageAlert("Не удалось подключиться", message: model.launchError) { model.launchError = nil }
         .onAppear { if selection == nil { selection = store.servers.first?.id } }
+    }
+
+    /// A double click on a row connects to that Mac.
+    @ViewBuilder private func connectOnDoubleClick(_ list: some View) -> some View {
+        if #available(macOS 13.0, *) {
+            list.contextMenu(forSelectionType: UUID.self) { _ in } primaryAction: { ids in
+                ids.compactMap { id in store.servers.first { $0.id == id } }.forEach(model.connect)
+            }
+        } else {
+            list
+        }
+    }
+
+    @ViewBuilder private func legacyDoubleClick(_ row: some View, server: Server) -> some View {
+        if #available(macOS 13.0, *) {
+            row
+        } else {
+            row.simultaneousGesture(TapGesture(count: 2).onEnded { model.connect(server) })
+        }
     }
 
     @ViewBuilder private func menu(for server: Server) -> some View {
@@ -63,7 +72,7 @@ struct ContentView: View {
             .disabled(Host.macBytes(server.wakeAddress) == nil)
         Button("Общий экран") { Host.openScreenSharing(server) }
         Divider()
-        Button("Удалить", role: .destructive) { store.delete(server) }
+        destructiveButton("Удалить") { store.delete(server) }
     }
 }
 
@@ -81,11 +90,11 @@ private struct ServerRow: View {
     var body: some View {
         HStack {
             Image(systemName: "desktopcomputer")
-                .foregroundStyle(sessionBox.session?.isRunning == true ? Color.green : Color.secondary)
+                .fg(sessionBox.session?.isRunning == true ? Color.green : Color.secondary)
             VStack(alignment: .leading) {
                 Text(server.displayName)
                 Text(server.user.isEmpty ? server.address : "\(server.user)@\(server.address)")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).fg(.secondary)
             }
             Spacer()
             StatusDot(status: status)
@@ -155,7 +164,7 @@ private struct HostPanel: View {
                 }
             }
             if !status.explanation.isEmpty {
-                Text(status.explanation).font(.callout).foregroundStyle(.secondary)
+                Text(status.explanation).font(.callout).fg(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let activity { ActivityLine(activity: activity, server: server) }
@@ -181,12 +190,12 @@ private struct HostPanel: View {
             }
             if status == .locked && !hasMacAccount {
                 Text("Чтобы разблокировать отсюда, укажите пользователя и пароль Mac в «Изменить…».")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).fg(.secondary)
             }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(status.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(RoundedRectangle(cornerRadius: 8).fill(status.color.opacity(0.08)))
     }
 }
 
@@ -205,7 +214,7 @@ private struct ActivityLine: View {
             HStack { ProgressView().controlSize(.small); Text("Пакет Wake-on-LAN отправлен, жду ответа…") }
         case .failed(let problem):
             VStack(alignment: .leading, spacing: 6) {
-                Label(problem, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Label(problem, systemImage: "exclamationmark.triangle.fill").fg(.orange)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack {
                     if problem == Host.UnlockError.hostKeyChanged.localizedDescription {
@@ -240,7 +249,7 @@ private struct ServerDetail: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(server.displayName).font(.title.bold())
                         Text(server.user.isEmpty ? server.address : "\(server.user)@\(server.address)")
-                            .foregroundStyle(.secondary).textSelection(.enabled)
+                            .fg(.secondary).selectable()
                     }
                     Spacer()
                     Button("Изменить…", action: edit)
@@ -255,7 +264,7 @@ private struct ServerDetail: View {
                         }
                         .controlSize(.large)
                         Label("Сеанс открыт", systemImage: "circle.fill")
-                            .foregroundStyle(.green).labelStyle(.titleAndIcon)
+                            .fg(.green).titleAndIconLabel()
                     } else {
                         Button { model.connect(server) } label: {
                             Label("Подключиться", systemImage: "play.fill").frame(minWidth: 140)
@@ -273,29 +282,18 @@ private struct ServerDetail: View {
                 if case .ended(let problem?) = session?.state {
                     VStack(alignment: .leading, spacing: 8) {
                         Label(problem, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
+                            .fg(.orange)
                         if problem == FreeRDP.certificateProblem {
                             Button("Забыть сертификат сервера") { model.forgetCertificate(for: server) }
                         }
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.1)))
                 }
 
-                GroupBox("Параметры") {
-                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
-                        row("Видео", server.codec.title)
-                        row("Окно", server.fullscreen ? "Во весь экран"
-                            : server.windowWidth.map { "\($0)×\(server.windowHeight ?? 0)" } ?? "Размер по умолчанию")
-                        row("Сертификат", server.certificate.title)
-                        row("Буфер обмена", server.clipboard ? "Общий" : "Выключен")
-                        row("Экран Мака", server.curtain ? "Гаснет во время сессии" : "Не гаснет")
-                        row("После отключения", server.keepForReconnect ? "Ждёт переподключения 5 минут" : "Сеанс убирается сразу")
-                        if !server.extraArgumentList.isEmpty {
-                            row("Дополнительно", server.extraArgumentList.joined(separator: " "))
-                        }
-                    }
+                GroupBox(label: Text("Параметры")) {
+                    PairGrid(rows: parameters.map { (id: $0.0, left: Text($0.0).foregroundColor(.secondary), right: Text($0.1)) })
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(6)
                 }
@@ -307,11 +305,20 @@ private struct ServerDetail: View {
         }
     }
 
-    private func row(_ title: String, _ value: String) -> some View {
-        GridRow {
-            Text(title).foregroundStyle(.secondary)
-            Text(value).textSelection(.enabled)
+    private var parameters: [(String, String)] {
+        var rows = [
+            ("Видео", server.codec.title),
+            ("Окно", server.fullscreen ? "Во весь экран"
+                : server.windowWidth.map { "\($0)×\(server.windowHeight ?? 0)" } ?? "Размер по умолчанию"),
+            ("Сертификат", server.certificate.title),
+            ("Буфер обмена", server.clipboard ? "Общий" : "Выключен"),
+            ("Экран Мака", server.curtain ? "Гаснет во время сессии" : "Не гаснет"),
+            ("После отключения", server.keepForReconnect ? "Ждёт переподключения 5 минут" : "Сеанс убирается сразу"),
+        ]
+        if !server.extraArgumentList.isEmpty {
+            rows.append(("Дополнительно", server.extraArgumentList.joined(separator: " ")))
         }
+        return rows
     }
 }
 
@@ -320,24 +327,20 @@ struct HotkeyList: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        GroupBox("Сочетания FreeRDP в сеансе") {
+        GroupBox(label: Text("Сочетания FreeRDP в сеансе")) {
             VStack(alignment: .leading, spacing: 6) {
                 if model.hotkeyModifier == .off {
-                    Text("Выключены в настройках.").foregroundStyle(.secondary)
+                    Text("Выключены в настройках.").fg(.secondary)
                 } else {
-                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
-                        ForEach(freerdpShortcuts, id: \.key) { shortcut in
-                            GridRow {
-                                Text("\(model.hotkeyModifier.symbol) + \(shortcut.key)")
-                                    .font(.body.monospaced())
-                                Text(shortcut.action)
-                            }
-                        }
-                    }
+                    PairGrid(rows: freerdpShortcuts.map { shortcut in
+                        (id: shortcut.key,
+                         left: Text("\(model.hotkeyModifier.symbol) + \(shortcut.key)").font(.system(.body, design: .monospaced)),
+                         right: Text(shortcut.action))
+                    }, verticalSpacing: 4)
                 }
                 if model.passSystemShortcuts {
                     Text("⌘Пробел, ⌘Tab, ⌘Q и другие системные сочетания уходят на удалённый Mac, пока окно сеанса активно и курсор над ним\(model.localControlShortcuts ? " (сочетания с одним ⌃, как ⌃← и ⌃→, остаются этому Mac)" : ""). Вернуть их этому Mac: модификатор + G.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).fg(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -353,7 +356,7 @@ private struct EmptyDetail: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: "desktopcomputer").font(.system(size: 48)).foregroundStyle(.secondary)
+            Image(systemName: "desktopcomputer").font(.system(size: 48)).fg(.secondary)
             Text(store.servers.isEmpty ? "Нет сохранённых Mac" : "Выберите Mac слева").font(.title3)
             if store.servers.isEmpty {
                 Button("Добавить Mac…", action: add).controlSize(.large)
@@ -380,13 +383,13 @@ private struct UpdateBanner: View {
 
     private func banner(_ title: String) -> some View {
         HStack(spacing: 10) {
-                Image(systemName: "arrow.down.circle.fill").foregroundStyle(.blue).font(.title2)
+                Image(systemName: "arrow.down.circle.fill").fg(.blue).font(.title2)
                 Text(title).font(.headline)
                 Spacer()
                 UpdateControl()
             }
             .padding(12)
-            .background(.blue.opacity(0.1))
+            .background(Color.blue.opacity(0.1))
     }
 }
 
@@ -402,18 +405,18 @@ struct UpdateControl: View {
                 Button("Проверить обновления") { updates.check() }
             case .checking:
                 ProgressView().controlSize(.small)
-                Text("Проверяю…").foregroundStyle(.secondary)
+                Text("Проверяю…").fg(.secondary)
             case .current:
-                Label("Последняя версия", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                Label("Последняя версия", systemImage: "checkmark.circle.fill").fg(.green)
                 Button("Проверить ещё раз") { updates.check() }
             case .newer(let available):
                 Button("Обновить до \(available.version)") { updates.update(sessionsOpen: model.runningCount > 0) }
-                    .buttonStyle(.borderedProminent)
+                    .prominentButton()
             case .updating:
                 ProgressView().controlSize(.small)
-                Text("Скачиваю и проверяю…").foregroundStyle(.secondary)
+                Text("Скачиваю и проверяю…").fg(.secondary)
             case .failed(let problem):
-                Text(problem).foregroundStyle(.orange).font(.caption)
+                Text(problem).fg(.orange).font(.caption)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Повторить") { updates.check() }
             }
@@ -424,13 +427,13 @@ struct UpdateControl: View {
 private struct MissingFreeRDPBanner: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.octagon.fill").foregroundStyle(.red).font(.title2)
+            Image(systemName: "exclamationmark.octagon.fill").fg(.red).font(.title2)
             VStack(alignment: .leading, spacing: 6) {
                 Text("sdl-freerdp не найден").font(.headline)
                 Text("Искали в /usr/local/bin (Homebrew на Intel) и /opt/homebrew/bin (Apple Silicon). Установите FreeRDP через Homebrew или укажите путь в настройках.")
                     .fixedSize(horizontal: false, vertical: true)
                 HStack {
-                    Text("brew install freerdp").font(.body.monospaced()).textSelection(.enabled)
+                    Text("brew install freerdp").font(.system(.body, design: .monospaced)).selectable()
                     Button("Скопировать") {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString("brew install freerdp", forType: .string)
@@ -445,6 +448,6 @@ private struct MissingFreeRDPBanner: View {
             Spacer()
         }
         .padding(14)
-        .background(.red.opacity(0.1))
+        .background(Color.red.opacity(0.1))
     }
 }

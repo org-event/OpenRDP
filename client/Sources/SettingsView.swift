@@ -8,7 +8,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("OpenRDP Client \(Updates.current)") {
+                LabeledRow(title: "OpenRDP Client \(Updates.current)") {
                     UpdateControl()
                 }
                 Picker("Канал", selection: $updates.channel) {
@@ -18,26 +18,26 @@ struct SettingsView: View {
                 Text("Обновления")
             } footer: {
                 Text("Новая версия проверяется и при запуске. «Обновить» скачивает её, сверяет контрольную сумму, ставит на место этой и перезапускает клиент. Бета — новые версии раньше всех, для проверки; с беты на стабильные клиент перейдёт, когда выйдет следующая стабильная версия.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).fg(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Section("FreeRDP") {
+            Section(header: Text("FreeRDP")) {
                 if FreeRDP.bundled != nil {
                     Toggle("Встроенный FreeRDP", isOn: $model.preferBundled)
                 }
-                LabeledContent("sdl-freerdp") {
+                LabeledRow(title: "sdl-freerdp") {
                     if let binary = model.binary {
                         Text(binary.path + (model.version.map { "  (\($0))" } ?? ""))
-                            .textSelection(.enabled)
+                            .selectable()
                     } else {
-                        Text("не найден").foregroundStyle(.red)
+                        Text("не найден").fg(.red)
                     }
                 }
                 if !model.isBundled {
                     HStack {
-                        TextField("Свой путь", text: $model.customBinaryPath,
-                                  prompt: Text(FreeRDP.candidates.joined(separator: " или ")))
+                        promptField("Свой путь", text: $model.customBinaryPath,
+                                    prompt: FreeRDP.candidates.joined(separator: " или "))
                         Button("Выбрать…", action: choose)
                     }
                 }
@@ -48,13 +48,13 @@ struct SettingsView: View {
                     ForEach(HotkeyModifier.allCases) { Text($0.title).tag($0) }
                 }
                 if let error = model.hotkeyError {
-                    Text(error).foregroundStyle(.red).font(.caption)
+                    Text(error).fg(.red).font(.caption)
                 }
             } header: {
                 Text("Сочетания FreeRDP")
             } footer: {
                 Text("FreeRDP по умолчанию держит правый Shift, поэтому заглавные П, К, В, Ь с правым Shift не набираются, а правый Shift+В отключает сеанс. Записывается в \(HotkeyConfig.url.path).")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).fg(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -64,7 +64,7 @@ struct SettingsView: View {
                     .disabled(!model.passSystemShortcuts)
             } footer: {
                 Text("Пока окно сеанса активно, ⌘Пробел (смена раскладки), ⌘Tab, ⌘Q, ⌘H, ⌘W уходят на удалённый Mac, а не обрабатываются этим. Системные сочетания, где зажат только ⌃, остаются этому Mac: ⌃← и ⌃→ переключают его рабочие столы, ⌃↑ открывает Mission Control, и из полноэкранного сеанса тоже. Действует со следующего подключения.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).fg(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -74,13 +74,13 @@ struct SettingsView: View {
                 Text("Трекпад и мышь")
             } footer: {
                 Text("Прокрутка в сеансе идёт в другую сторону, вверх‑вниз и влево‑вправо, для трекпада и мыши. Делает сервер OpenRDP; действует со следующего подключения.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).fg(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             Section { HotkeyList() }
         }
-        .formStyle(.grouped)
+        .groupedForm()
         .padding(.vertical, 8)
     }
 

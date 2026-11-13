@@ -2,30 +2,75 @@ import AppKit
 import SwiftUI
 
 @main
+enum Main {
+    static func main() {
+        if #available(macOS 13.0, *) {
+            OpenRDPClientApp.main()
+        } else {
+            LegacyClientApp.main()
+        }
+    }
+}
+
+/// The main window's content, the same in both apps.
+private struct MainWindow: View {
+    let model: AppModel
+    let delegate: AppDelegate
+
+    var body: some View {
+        ContentView()
+            .environmentObject(model)
+            .environmentObject(model.store)
+            .environmentObject(model.updates)
+            .frame(minWidth: 680, minHeight: 420)
+            .onAppear { delegate.model = model }
+    }
+}
+
+private struct SettingsWindow: View {
+    let model: AppModel
+
+    var body: some View {
+        SettingsView()
+            .environmentObject(model)
+            .environmentObject(model.updates)
+            .frame(width: 560)
+    }
+}
+
+@available(macOS 13.0, *)
 struct OpenRDPClientApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = AppModel()
 
     var body: some Scene {
         Window("OpenRDP Client", id: "main") {
-            ContentView()
-                .environmentObject(model)
-                .environmentObject(model.store)
-                .environmentObject(model.updates)
-                .frame(minWidth: 680, minHeight: 420)
-                .onAppear { delegate.model = model }
+            MainWindow(model: model, delegate: delegate)
         }
         .defaultSize(width: 860, height: 620)
         .commands {
             CommandGroup(replacing: .newItem) {}
         }
 
-        Settings {
-            SettingsView()
-                .environmentObject(model)
-                .environmentObject(model.updates)
-                .frame(width: 560)
+        Settings { SettingsWindow(model: model) }
+    }
+}
+
+/// macOS 11 and 12 have no single-window scene: a WindowGroup without File > New.
+struct LegacyClientApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    @StateObject private var model = AppModel()
+
+    var body: some Scene {
+        WindowGroup("OpenRDP Client") {
+            MainWindow(model: model, delegate: delegate)
+                .frame(idealWidth: 860, idealHeight: 620)
         }
+        .commands {
+            CommandGroup(replacing: .newItem) {}
+        }
+
+        Settings { SettingsWindow(model: model) }
     }
 }
 

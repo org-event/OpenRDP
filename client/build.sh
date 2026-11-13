@@ -17,7 +17,6 @@ root="$(cd "$here/.." && pwd)"
 out="$here/build"
 app="$out/OpenRDP Client.app"
 version="${VERSION:-0.1.0}"
-min_macos=13.0
 # The macOS 27 SDK turns @State into a macro whose plugin ships only with Xcode;
 # the 26 SDK, also part of the Command Line Tools, still has the property wrapper.
 sdk="${SDKROOT:-}"
@@ -25,6 +24,21 @@ for candidate in /Library/Developer/CommandLineTools/SDKs/MacOSX26*.sdk; do
     if [[ -z "$sdk" && -d "$candidate" ]]; then sdk="$candidate"; fi
 done
 sdk="${sdk:-$(xcrun --show-sdk-path)}"
+
+# The oldest macOS the app runs on; build-freerdp.sh builds FreeRDP for the same.
+# Below macOS 12.3 Swift links its compatibility libraries, and the toolchains
+# from macOS 27 on have them for arm64 only: with those, a local build is for
+# macOS 13 (Xcode 16, as on CI, still has x86_64), and a CI build fails instead.
+min_macos=11.0
+swift_lib="$(dirname "$(xcrun -f swiftc)")/../lib"
+if [[ " $(lipo -archs "$swift_lib/swift/macosx/libswiftCompatibility56.a" 2>/dev/null) " != *" x86_64 "* ]]; then
+    if [[ -n "${CI:-}" ]]; then
+        echo "this Swift toolchain cannot build x86_64 for macOS $min_macos" >&2
+        exit 1
+    fi
+    echo "warning: this Swift toolchain cannot build x86_64 for macOS $min_macos; building for macOS 13" >&2
+    min_macos=13.0
+fi
 
 rm -rf "$app" "$out/obj"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$out/obj"
@@ -35,9 +49,16 @@ for arch in arm64 x86_64; do
     xcrun swiftc -O -parse-as-library -swift-version 5 -sdk "$sdk" \
         -target "$arch-apple-macos$min_macos" \
         -module-name OpenRDPClient \
+        -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
         -o "$out/obj/client-$arch" "${sources[@]}"
 done
 lipo -create "$out/obj/client-arm64" "$out/obj/client-x86_64" -output "$app/Contents/MacOS/OpenRDP Client"
+# Before macOS 12 Swift concurrency is not part of the system: the app carries
+# it, and on later systems the one in /usr/lib/swift comes first in the rpath.
+if otool -L "$app/Contents/MacOS/OpenRDP Client" | grep -q '@rpath/libswift_Concurrency.dylib'; then
+    mkdir -p "$app/Contents/Frameworks"
+    cp "$swift_lib/swift-5.5/macosx/libswift_Concurrency.dylib" "$app/Contents/Frameworks/"
+fi
 
 echo "clang libopenrdp-keyboard.dylib"
 xcrun clang -arch arm64 -arch x86_64 -mmacosx-version-min=$min_macos -O2 -Wall -Werror \
@@ -55,7 +76,7 @@ else
     echo "no bundled FreeRDP (run client/build-freerdp.sh); the app will use Homebrew's"
 fi
 
-sed "s/@VERSION@/$version/g" "$here/Resources/Info.plist" > "$app/Contents/Info.plist"
+sed -e "s/@VERSION@/$version/g" -e "s/@MIN_MACOS@/$min_macos/g" "$here/Resources/Info.plist" > "$app/Contents/Info.plist"
 cp "$root/assets/icon/client.icns" "$app/Contents/Resources/AppIcon.icns"
 if [[ "${1:-}" == "--dmg" ]]; then
     # The disk-image window's picture, inside the app so the signature covers it.

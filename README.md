@@ -120,7 +120,7 @@ On another machine, `openrdp-doctor wol <MAC> [broadcast]` sends a Wake-on-LAN p
 
 [`client/`](client) holds a small native Mac app (SwiftUI) that connects to OpenRDP servers through FreeRDP's `sdl-freerdp`, so you do not have to type the FreeRDP command by hand. A full build carries its own FreeRDP 3.32.2 with SDL3, FFmpeg (H.264 only) and OpenSSL inside the app, so the client Mac needs nothing else. Without it, the app uses FreeRDP from Homebrew (`brew install freerdp`) and looks for `sdl-freerdp` in `/usr/local/bin` (Intel) and `/opt/homebrew/bin` (Apple Silicon). Another path can be set in Settings. The app says so at once when `sdl-freerdp` is missing.
 
-To install it, download `openrdp-client-<version>-universal.dmg` from the [releases](https://github.com/org-event/OpenRDP/releases). It runs on Apple Silicon and Intel Macs with macOS 13 or newer. Drag OpenRDP Client onto Applications. The app is not notarized, so take it out of quarantine once:
+To install it, download `openrdp-client-<version>-universal.dmg` from the [releases](https://github.com/org-event/OpenRDP/releases). It runs on Apple Silicon and Intel Macs with macOS 11 Big Sur or newer. Drag OpenRDP Client onto Applications. The app is not notarized, so take it out of quarantine once:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/OpenRDP Client.app"

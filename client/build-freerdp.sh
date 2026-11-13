@@ -20,7 +20,8 @@ work="$here/build/deps"
 src="$work/src"
 out="$here/build/freerdp"
 read -r -a archs <<< "${ARCHS:-arm64 x86_64}"
-export MACOSX_DEPLOYMENT_TARGET=13.0
+# The oldest macOS OpenRDP Client runs on (client/build.sh has the same).
+export MACOSX_DEPLOYMENT_TARGET=11.0
 jobs=$(sysctl -n hw.ncpu)
 
 # Versions and checksums as in Homebrew's formulae.
@@ -56,9 +57,9 @@ unpack() { # unpack <archive> <dir>
     tar -xf "$1" -C "$2" --strip-components 1
 }
 
-# built <name> <arch>: whether that step is done (its stamp exists, from this
-# run or from a cache), so its sources need not be downloaded.
-built() { [[ -f "$work/stamps/$1-$2" ]]; }
+# built <name> <arch>: whether that step is done for this deployment target (its
+# stamp holds it, from this run or from a cache), so its sources need not be downloaded.
+built() { [[ "$(cat "$work/stamps/$1-$2" 2>/dev/null)" == "$MACOSX_DEPLOYMENT_TARGET" ]]; }
 
 # step <name> <arch> <function>: runs the function once per arch, logging to build/deps/logs.
 step() {
@@ -70,7 +71,7 @@ step() {
         tail -30 "$work/logs/$name-$arch.log" >&2
         exit 1
     fi
-    touch "$stamp"
+    echo "$MACOSX_DEPLOYMENT_TARGET" > "$stamp"
 }
 
 cmake_build() { # cmake_build <arch> <source dir> <cmake args...>

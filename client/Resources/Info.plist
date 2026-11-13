@@ -23,7 +23,7 @@
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>13.0</string>
+	<string>@MIN_MACOS@</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Чтобы подключаться к Mac в этой сети, показывать, какие из них включены, и будить их.</string>
 	<key>NSHighResolutionCapable</key>

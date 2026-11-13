@@ -1,7 +1,7 @@
 #!/bin/bash
 # Checks a built "OpenRDP Client.app": every Mach-O file inside is universal
-# (arm64 + x86_64), and everything it loads is either inside the app or part of
-# macOS. With --bundled, the app must also carry its own sdl-freerdp.
+# (arm64 + x86_64), runs on the macOS in the app's LSMinimumSystemVersion, and
+# everything it loads is either inside the app or part of macOS. With --bundled, the app must also carry its own sdl-freerdp.
 #
 #   client/check-app.sh [--bundled] [path/to/OpenRDP Client.app]
 set -euo pipefail
@@ -24,6 +24,17 @@ if $bundled; then
     [[ -x "$app/Contents/MacOS/sdl-freerdp" ]] || fail "no bundled sdl-freerdp"
 fi
 
+min_macos=$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$app/Contents/Info.plist")
+
+# minos <file> <arch>: the oldest macOS that slice says it runs on.
+minos() {
+    otool -arch "$2" -l "$1" | awk '
+        /cmd LC_BUILD_VERSION/ { build = 1 }
+        /cmd LC_VERSION_MIN_MACOSX/ { old = 1 }
+        build && $1 == "minos" { print $2; exit }
+        old && $1 == "version" { print $2; exit }'
+}
+
 count=0
 while IFS= read -r -d '' f; do
     file -b "$f" | grep -q '^Mach-O' || continue
@@ -32,7 +43,14 @@ while IFS= read -r -d '' f; do
 
     archs=$(lipo -archs "$f")
     for arch in arm64 x86_64; do
-        [[ " $archs " == *" $arch "* ]] || fail "$name lacks $arch (has: $archs)"
+        if [[ " $archs " != *" $arch "* ]]; then
+            fail "$name lacks $arch (has: $archs)"
+            continue
+        fi
+        needs=$(minos "$f" "$arch")
+        if [[ -n "$needs" && "$(printf '%s\n%s\n' "$needs" "$min_macos" | sort -V | tail -1)" != "$min_macos" ]]; then
+            fail "$name ($arch) needs macOS $needs, the app says $min_macos"
+        fi
     done
 
     # Dependency lines start with a tab; a dylib also lists its own id there.
@@ -53,4 +71,4 @@ codesign --verify --deep --strict "$app" || fail "signature does not verify"
 
 ((count > 0)) || fail "no Mach-O files found"
 ((failed == 0)) || exit 1
-echo "ok: $count Mach-O files, all universal, nothing linked outside the app or macOS"
+echo "ok: $count Mach-O files, all universal and for macOS $min_macos, nothing linked outside the app or macOS"
