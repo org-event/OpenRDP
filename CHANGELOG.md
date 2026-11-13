@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.1-beta.2] - 2026-11-13
+
 ### Added
 
 - OpenRDP Client runs on macOS 11 Big Sur and 12 Monterey, so older Intel Macs such as a 2014 iMac can connect. On macOS 13 and later the app looks and works as before; on 11 and 12 the list of Macs and the forms use the SwiftUI of those systems, and a double click on a Mac connects to it.
@@ -287,7 +289,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.1...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.2...HEAD
+[1.7.1-beta.2]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.1...v1.7.1-beta.2
 [1.7.1-beta.1]: https://github.com/org-event/OpenRDP/compare/v1.7.0...v1.7.1-beta.1
 [1.7.0]: https://github.com/org-event/OpenRDP/compare/v1.6.9...v1.7.0
 [1.6.9]: https://github.com/org-event/OpenRDP/compare/v1.6.8...v1.6.9
