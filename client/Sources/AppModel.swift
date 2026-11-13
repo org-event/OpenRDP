@@ -24,6 +24,11 @@ final class AppModel: ObservableObject {
     @Published var passSystemShortcuts: Bool {
         didSet { defaults.set(passSystemShortcuts, forKey: "passSystemShortcuts") }
     }
+    /// While ⌃ is the only modifier held, system shortcuts stay with this Mac,
+    /// so ⌃← and ⌃→ switch its Spaces from a session in full screen.
+    @Published var localControlShortcuts: Bool {
+        didSet { defaults.set(localControlShortcuts, forKey: "localControlShortcuts") }
+    }
     /// Turn the scroll of the trackpad and the mouse, both axes, the other way in
     /// the session; the OpenRDP server does it (`reversescroll`).
     @Published var reverseScroll: Bool {
@@ -45,6 +50,7 @@ final class AppModel: ObservableObject {
         customBinaryPath = defaults.string(forKey: "customBinaryPath") ?? ""
         preferBundled = defaults.object(forKey: "preferBundled") as? Bool ?? true
         passSystemShortcuts = defaults.object(forKey: "passSystemShortcuts") as? Bool ?? true
+        localControlShortcuts = defaults.object(forKey: "localControlShortcuts") as? Bool ?? true
         reverseScroll = defaults.bool(forKey: "reverseScroll")
         hotkeyModifier = defaults.string(forKey: "hotkeyModifier").flatMap(HotkeyModifier.init(rawValue:)) ?? .rightCommandOption
         locateBinary()
@@ -160,6 +166,7 @@ final class AppModel: ObservableObject {
             let session = try Session(server: server, binary: binary,
                                       password: Keychain.password(for: server.id),
                                       passSystemShortcuts: passSystemShortcuts,
+                                      localControlShortcuts: localControlShortcuts,
                                       reverseScroll: reverseScroll)
             sessions[server.id] = session
             // Re-publish so views that list sessions see their state change.

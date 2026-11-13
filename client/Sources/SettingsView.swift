@@ -60,8 +60,10 @@ struct SettingsView: View {
 
             Section {
                 Toggle("Передавать системные сочетания в сеанс", isOn: $model.passSystemShortcuts)
+                Toggle("Оставить этому Mac сочетания с одним ⌃", isOn: $model.localControlShortcuts)
+                    .disabled(!model.passSystemShortcuts)
             } footer: {
-                Text("Пока окно сеанса активно, ⌘Пробел (смена раскладки), ⌘Tab, ⌘Q, ⌘H, ⌘W уходят на удалённый Mac, а не обрабатываются этим. Действует со следующего подключения.")
+                Text("Пока окно сеанса активно, ⌘Пробел (смена раскладки), ⌘Tab, ⌘Q, ⌘H, ⌘W уходят на удалённый Mac, а не обрабатываются этим. Системные сочетания, где зажат только ⌃, остаются этому Mac: ⌃← и ⌃→ переключают его рабочие столы, ⌃↑ открывает Mission Control, и из полноэкранного сеанса тоже. Действует со следующего подключения.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

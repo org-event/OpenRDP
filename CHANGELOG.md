@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- OpenRDP Client: with "Pass system shortcuts to the session" on, shortcuts where ⌃ is the only modifier held now stay with the client Mac, so ⌃← and ⌃→ switch its Spaces and ⌃↑ opens Mission Control, also from a session in full screen. A new setting, on by default, decides this; turned off, they go to the remote Mac as before.
+
+### Fixed
+
+- OpenRDP Client: with the bundled SDL, a keyboard grab that SDL itself set could leave the client Mac's system shortcuts off after the session window lost focus.
+
 ## [1.7.1-beta.1] - 2026-11-11
 
 ### Fixed

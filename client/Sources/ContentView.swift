@@ -336,7 +336,7 @@ struct HotkeyList: View {
                     }
                 }
                 if model.passSystemShortcuts {
-                    Text("⌘Пробел, ⌘Tab, ⌘Q и другие системные сочетания уходят на удалённый Mac, пока окно сеанса активно и курсор над ним. Вернуть их этому Mac: модификатор + G.")
+                    Text("⌘Пробел, ⌘Tab, ⌘Q и другие системные сочетания уходят на удалённый Mac, пока окно сеанса активно и курсор над ним\(model.localControlShortcuts ? " (сочетания с одним ⌃, как ⌃← и ⌃→, остаются этому Mac)" : ""). Вернуть их этому Mac: модификатор + G.")
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }

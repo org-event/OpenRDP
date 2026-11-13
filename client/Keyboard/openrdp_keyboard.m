@@ -11,12 +11,20 @@
 // the Cmd shortcuts of SDL's default menu (Cmd+Q, Cmd+W, Cmd+H, Cmd+M), so those
 // keys reach the remote Mac instead of quitting or hiding the client.
 //
+// With OPENRDP_LOCAL_CONTROL_SHORTCUTS=1 the system shortcuts come back to this
+// Mac while ⌃ is the only modifier held, so ⌃← and ⌃→ switch its Spaces and ⌃↑
+// opens its Mission Control, also from a session in full screen. WindowServer
+// matches a shortcut when its last key goes down, so turning them on at ⌃ is in
+// time. Disabling single shortcuts (CGSSetSymbolicHotKeyEnabled) instead would
+// outlive a crashed client, while the operating mode belongs to this connection.
+//
 // OPENRDP_KEYBOARD_DEBUG=1 logs every grab change to stderr (the session log).
 
 #import <AppKit/AppKit.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef int CGSConnection;
 enum { CGSGlobalHotKeyEnable = 0, CGSGlobalHotKeyDisable = 1 };
@@ -29,16 +37,26 @@ extern bool SDL_SetWindowKeyboardGrab(void *window, bool grabbed) __attribute__(
 
 static bool hotkeys_disabled = false;
 static bool grab_requested = false;
+static bool local_control_shortcuts = false;
+static bool control_only = false;
 
+// Always applied: an SDL built with SDL_MAC_NO_SANDBOX sets the same mode itself
+// on every grab and focus change, so what we last set says nothing about it now.
 static void set_system_hotkeys(bool disabled)
 {
-    if (disabled == hotkeys_disabled)
-        return;
     CGError err = CGSSetGlobalHotKeyOperatingMode(_CGSDefaultConnection(),
                                                   disabled ? CGSGlobalHotKeyDisable : CGSGlobalHotKeyEnable);
+    if (disabled != hotkeys_disabled || err)
+        fprintf(stderr, "[openrdp-keyboard] %.3f system shortcuts %s (%d)\n", [NSDate date].timeIntervalSince1970,
+                disabled ? "passed to the session" : "back to this Mac", err);
     hotkeys_disabled = disabled;
-    fprintf(stderr, "[openrdp-keyboard] %.3f system shortcuts %s (%d)\n", [NSDate date].timeIntervalSince1970,
-            disabled ? "passed to the session" : "back to this Mac", err);
+}
+
+static bool is_control_only(NSEventModifierFlags flags)
+{
+    const NSEventModifierFlags mods = NSEventModifierFlagControl | NSEventModifierFlagOption |
+                                      NSEventModifierFlagCommand | NSEventModifierFlagShift;
+    return (flags & mods) == NSEventModifierFlagControl;
 }
 
 static void strip_command_shortcuts(NSMenu *menu)
@@ -54,8 +72,17 @@ static void strip_command_shortcuts(NSMenu *menu)
 static void update_system_hotkeys(void)
 {
     if (getenv("OPENRDP_KEYBOARD_DEBUG"))
-        fprintf(stderr, "[openrdp-keyboard] %.3f grab=%d active=%d\n", [NSDate date].timeIntervalSince1970, grab_requested, NSApp.isActive);
-    set_system_hotkeys(grab_requested && NSApp.isActive);
+        fprintf(stderr, "[openrdp-keyboard] %.3f grab=%d active=%d control=%d\n", [NSDate date].timeIntervalSince1970,
+                grab_requested, NSApp.isActive, control_only);
+    set_system_hotkeys(grab_requested && NSApp.isActive && !(local_control_shortcuts && control_only));
+}
+
+// After SDL has handled the same change (focus, key window) and set the mode.
+static void update_system_hotkeys_soon(void)
+{
+    dispatch_async(dispatch_get_main_queue(), ^{
+        update_system_hotkeys();
+    });
 }
 
 static bool openrdp_SetWindowKeyboardGrab(void *window, bool grabbed)
@@ -77,13 +104,35 @@ __attribute__((used)) static const struct {
 
 __attribute__((constructor)) static void openrdp_keyboard_init(void)
 {
-    for (NSNotificationName name in @[ NSApplicationDidBecomeActiveNotification, NSApplicationDidResignActiveNotification ]) {
+    const char *local = getenv("OPENRDP_LOCAL_CONTROL_SHORTCUTS");
+    local_control_shortcuts = local && strcmp(local, "1") == 0;
+
+    for (NSNotificationName name in @[ NSApplicationDidBecomeActiveNotification, NSApplicationDidResignActiveNotification,
+                                       NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification ]) {
         [[NSNotificationCenter defaultCenter] addObserverForName:name
                                                           object:nil
                                                            queue:nil
                                                       usingBlock:^(NSNotification *note) {
                                                           (void)note;
+                                                          // ⌃ may have gone up while another Space was shown.
+                                                          control_only = is_control_only(NSEvent.modifierFlags);
                                                           update_system_hotkeys();
+                                                          update_system_hotkeys_soon();
                                                       }];
     }
+
+    if (!local_control_shortcuts)
+        return;
+    // NSApp does not exist yet while the library loads.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged
+                                              handler:^NSEvent *(NSEvent *event) {
+                                                  bool now = is_control_only(event.modifierFlags);
+                                                  if (now != control_only) {
+                                                      control_only = now;
+                                                      update_system_hotkeys();
+                                                  }
+                                                  return event;
+                                              }];
+    });
 }
