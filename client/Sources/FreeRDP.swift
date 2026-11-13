@@ -132,7 +132,7 @@ final class Session: ObservableObject, Identifiable {
     private let process = Process()
     private var disconnectRequested = false
 
-    init(server: Server, binary: URL, password: String?, passSystemShortcuts: Bool, reverseScroll: Bool) throws {
+    init(server: Server, binary: URL, password: String?, passSystemShortcuts: Bool, localControlShortcuts: Bool, reverseScroll: Bool) throws {
         self.server = server
         try FileManager.default.createDirectory(at: AppPaths.logs, withIntermediateDirectories: true)
         let safeName = server.displayName.replacingOccurrences(of: "/", with: "-")
@@ -146,6 +146,7 @@ final class Session: ObservableObject, Identifiable {
         env.removeValue(forKey: "DYLD_INSERT_LIBRARIES")
         if passSystemShortcuts, let lib = Bundle.main.url(forResource: "libopenrdp-keyboard", withExtension: "dylib") {
             env["DYLD_INSERT_LIBRARIES"] = lib.path
+            env["OPENRDP_LOCAL_CONTROL_SHORTCUTS"] = localControlShortcuts ? "1" : "0"
         }
         // FreeRDP enters full screen with SDL_SetWindowFullscreen, and SDL then
         // hides the menu bar for good. With this the pointer at the top edge
