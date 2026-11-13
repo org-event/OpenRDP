@@ -36,6 +36,7 @@ minos() {
 }
 
 count=0
+swift_rpath_needed=0
 while IFS= read -r -d '' f; do
     file -b "$f" | grep -q '^Mach-O' || continue
     count=$((count + 1))
@@ -59,6 +60,11 @@ while IFS= read -r -d '' f; do
         [[ "$dep" == "$id" ]] && continue
         case "$dep" in
             /usr/lib/* | /System/*) ;;
+            @rpath/libswift*.dylib)
+                # The Swift runtime: in /usr/lib/swift, which the app's rpath
+                # lists first, or (concurrency before macOS 12) inside the app.
+                [[ -e "$app/Contents/Frameworks/${dep#@rpath/}" ]] || swift_rpath_needed=1
+                ;;
             @rpath/*)
                 [[ -e "$app/Contents/Frameworks/${dep#@rpath/}" ]] || fail "$name needs $dep, missing from Contents/Frameworks"
                 ;;
@@ -66,6 +72,10 @@ while IFS= read -r -d '' f; do
         esac
     done < <(otool -L "$f" | grep $'^\t' | awk '{print $1}' | sort -u)
 done < <(find "$app/Contents" -type f -print0)
+
+if ((swift_rpath_needed)) && ! otool -l "$app/Contents/MacOS/OpenRDP Client" | grep -q 'path /usr/lib/swift '; then
+    fail "the app loads Swift libraries through @rpath but has no /usr/lib/swift in its rpath"
+fi
 
 codesign --verify --deep --strict "$app" || fail "signature does not verify"
 
