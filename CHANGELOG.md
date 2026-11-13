@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- OpenRDP Client runs on macOS 11 Big Sur and 12 Monterey, so older Intel Macs such as a 2014 iMac can connect. On macOS 13 and later the app looks and works as before; on 11 and 12 the list of Macs and the forms use the SwiftUI of those systems, and a double click on a Mac connects to it.
+
 ### Changed
 
 - OpenRDP Client: with "Pass system shortcuts to the session" on, shortcuts where ⌃ is the only modifier held now stay with the client Mac, so ⌃← and ⌃→ switch its Spaces and ⌃↑ opens Mission Control, also from a session in full screen. A new setting, on by default, decides this; turned off, they go to the remote Mac as before.

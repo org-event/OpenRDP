@@ -123,14 +123,29 @@ final class Updates: ObservableObject {
         }
     }
 
+    /// Downloads to `destination`. URLSession's async download is macOS 12 and later.
+    private static func download(_ url: URL, to destination: URL) async throws -> URLResponse {
+        try await withCheckedThrowingContinuation { continuation in
+            URLSession.shared.downloadTask(with: url) { location, response, error in
+                // The temporary file is deleted when this handler returns.
+                do {
+                    guard let location, let response else { throw error ?? URLError(.badServerResponse) }
+                    try FileManager.default.moveItem(at: location, to: destination)
+                    continuation.resume(returning: response)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }.resume()
+        }
+    }
+
     /// The new app, copied out of the verified disk image into a folder of its own.
     private static func stage(_ available: Available) async throws -> URL {
         let work = FileManager.default.temporaryDirectory.appendingPathComponent("openrdp-client-update-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
-        let (downloaded, response) = try await URLSession.shared.download(from: available.image)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw UpdateError("сервер не отдал образ") }
         let image = work.appendingPathComponent("client.dmg")
-        try FileManager.default.moveItem(at: downloaded, to: image)
+        let response = try await download(available.image, to: image)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw UpdateError("сервер не отдал образ") }
 
         let (sum, _) = try await URLSession.shared.data(from: available.checksum)
         guard let expected = String(decoding: sum, as: UTF8.self).split(whereSeparator: \.isWhitespace).first?.lowercased(),
