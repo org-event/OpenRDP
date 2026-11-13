@@ -1,0 +1,4 @@
+# Test code under src/tests/ holds made-up passwords on purpose; scanning it only
+# brings back the "hard-coded cryptographic value" alerts dismissed before.
+paths-ignore:
+  - src/tests
