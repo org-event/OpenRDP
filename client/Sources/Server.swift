@@ -41,7 +41,7 @@ struct Server: Identifiable, Codable, Hashable {
     var windowWidth: Int?
     var windowHeight: Int?
     var clipboard = true
-    /// Play the server's sound on this Mac (FreeRDP `/sound:sys:mac`).
+    /// Play the server's sound on this Mac (FreeRDP `/sound:sys:mac,latency:300`).
     var sound = true
     /// Lend this Mac's microphone to the server (`/microphone:sys:mac`). The
     /// OpenRDP server turns it on only while an app there records from

@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.1-beta.5] - 2026-11-18
+
+### Fixed
+
+- **Sound crackled** in OpenRDP Client, still after 1.7.1-beta.4: FreeRDP keeps at most two sound packets in reserve by default and drops the rest, so packets that arrived together after a hold-up behind a video frame were thrown away, and so was most of the silence the server sends ahead. OpenRDP Client now passes `/sound:sys:mac,latency:300`, which lets FreeRDP keep up to 300 ms. It adds no delay of its own. With another FreeRDP, add `,latency:300` to `/sound` the same way.
+
 ## [1.7.1-beta.4] - 2026-11-18
 
 ### Fixed
@@ -305,7 +311,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.4...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.5...HEAD
+[1.7.1-beta.5]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.4...v1.7.1-beta.5
 [1.7.1-beta.4]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.3...v1.7.1-beta.4
 [1.7.1-beta.3]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.2...v1.7.1-beta.3
 [1.7.1-beta.2]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.1...v1.7.1-beta.2
