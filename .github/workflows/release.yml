@@ -46,7 +46,7 @@ jobs:
             client/build/deps/prefix-arm64
             client/build/deps/prefix-x86_64
             client/build/deps/stamps
-          key: client-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('client/build-freerdp.sh') }}
+          key: client-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('client/build-freerdp.sh', 'client/patches/*.patch') }}
       - name: Client
         run: |
           client/build-freerdp.sh

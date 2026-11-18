@@ -1,0 +1,69 @@
+Stretch a session smaller than the window to the window.
+
+With /dynamic-resolution FreeRDP asks the server for its window's size and draws
+the answer 1:1. OpenRDP caps a session at 4096 pixels a side (the H.264 encoder's
+limit), so on a 5K iMac (5120x2880) the picture filled only part of the window
+and the rest stayed black. Now a smaller session is scaled to the window, mouse
+included, as /smart-sizing does (which FreeRDP refuses with /dynamic-resolution).
+
+diff --git a/client/SDL/SDL3/sdl_context.cpp b/client/SDL/SDL3/sdl_context.cpp
+--- a/client/SDL/SDL3/sdl_context.cpp
++++ b/client/SDL/SDL3/sdl_context.cpp
+@@ -920,7 +920,25 @@ bool SdlContext::drawToWindow(SdlWindow& window, const std::vector<SDL_Rect>& re
+ 	std::unique_lock lock(_critical);
+ 	auto surface = _primary.get();
+ 
+-	if (useLocalScale())
++	/* OpenRDP: with /dynamic-resolution a server may answer with a smaller session than the
++	 * window (an H.264 encoder takes at most 4096 pixels a side, a 5K screen has 5120): stretch
++	 * it to the window instead of leaving black margins. */
++	_fitToWindow = !useLocalScale() &&
++	               freerdp_settings_get_bool(context()->settings, FreeRDP_DynamicResolutionUpdate) &&
++	               !freerdp_settings_get_bool(context()->settings, FreeRDP_UseMultimon) &&
++	               gdi->width > 0 && gdi->height > 0 &&
++	               (gdi->width < size.w || gdi->height < size.h);
++
++	if (_fitToWindow)
++	{
++		window.setOffsetX(0);
++		window.setOffsetY(0);
++		_localScale = { static_cast<float>(size.w) / static_cast<float>(gdi->width),
++			            static_cast<float>(size.h) / static_cast<float>(gdi->height) };
++		if (!window.drawScaledRects(surface, _localScale, rects))
++			return false;
++	}
++	else if (useLocalScale())
+ 	{
+ 		window.setOffsetX(0);
+ 		window.setOffsetY(0);
+@@ -1410,7 +1428,7 @@ bool SdlContext::eventToPixelCoordinates(SDL_WindowID id, SDL_Event& ev)
+ 
+ SDL_FPoint SdlContext::applyLocalScaling(const SDL_FPoint& val) const
+ {
+-	if (!useLocalScale())
++	if (!useLocalScale() && !_fitToWindow)
+ 		return val;
+ 
+ 	auto rval = val;
+@@ -1421,7 +1439,7 @@ SDL_FPoint SdlContext::applyLocalScaling(const SDL_FPoint& val) const
+ 
+ void SdlContext::removeLocalScaling(float& x, float& y) const
+ {
+-	if (!useLocalScale())
++	if (!useLocalScale() && !_fitToWindow)
+ 		return;
+ 	x /= _localScale.x;
+ 	y /= _localScale.y;
+diff --git a/client/SDL/SDL3/sdl_context.hpp b/client/SDL/SDL3/sdl_context.hpp
+--- a/client/SDL/SDL3/sdl_context.hpp
++++ b/client/SDL/SDL3/sdl_context.hpp
+@@ -232,6 +232,9 @@ class SdlContext
+ 
+ 	SDLSurfacePtr _primary;
+ 	SDL_FPoint _localScale{ 1.0f, 1.0f };
++	/* OpenRDP: the session is smaller than the window (the server caps its size), so the
++	 * picture is stretched to the window like with /smart-sizing. */
++	bool _fitToWindow = false;
+ 
+ 	sdlDispContext _disp;
+ 	sdlInput _input;

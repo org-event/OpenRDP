@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.1-beta.4] - 2026-11-18
+
+### Fixed
+
+- **Microphone**: the server now asks the client for stereo. FreeRDP's macOS recorder (OpenRDP Client, `sdl-freerdp`) records only in stereo and, asked for mono, closed the channel without a word, so no sound ever reached "OpenRDP Microphone". Core Audio mixes the stereo down to the mono input.
+- **Sound crackled** in OpenRDP Client and FreeRDP: they play each sound packet the moment it arrives and keep nothing in reserve, so a packet held up behind a large video frame left a gap. The server now sends 150 ms of silence ahead whenever the sound starts or resumes after a pause, so a late packet still arrives in time. The sound is that much later than the picture.
+- OpenRDP Client: on a screen larger than a session can be (a 5K iMac: 5120x2880, while the server caps a session at 4096 pixels a side, the H.264 encoder's limit), the picture filled only part of the window and the rest stayed black. The bundled FreeRDP now stretches a session smaller than its window to the window, mouse included. It carries this as a patch, `client/patches/freerdp-fit-session.patch`.
+- The server's hint for a missing microphone driver now names the command that restarts the login-window service, `sudo launchctl kickstart -k system/com.openrdp.broker`, which installs it.
+
 ## [1.7.1-beta.3] - 2026-11-18
 
 ### Added
@@ -296,7 +305,9 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.2...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.4...HEAD
+[1.7.1-beta.4]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.3...v1.7.1-beta.4
+[1.7.1-beta.3]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.2...v1.7.1-beta.3
 [1.7.1-beta.2]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.1...v1.7.1-beta.2
 [1.7.1-beta.1]: https://github.com/org-event/OpenRDP/compare/v1.7.0...v1.7.1-beta.1
 [1.7.0]: https://github.com/org-event/OpenRDP/compare/v1.6.9...v1.7.0
