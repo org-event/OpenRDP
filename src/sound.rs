@@ -136,7 +136,9 @@ struct OutputIvars {
 /// packet the moment it arrives (FreeRDP's macOS player keeps no buffer of its
 /// own), so a packet held up behind a large video frame left a gap: the sound
 /// crackled. With this much already queued on the client, a late packet still
-/// arrives before its turn. It is also the extra delay of the sound.
+/// arrives before its turn. It is also the extra delay of the sound. FreeRDP
+/// keeps it only with a `latency` above it (OpenRDP Client passes 300); at its
+/// default of 0 it drops what follows until the lead has played.
 const LEAD_MS: u32 = 150;
 
 /// Bytes of silence for `ms` at `rate`, in whole frames.

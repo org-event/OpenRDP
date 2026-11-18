@@ -63,7 +63,11 @@ enum FreeRDP {
             args.append("/size:\(w)x\(h)")
         }
         args.append(server.clipboard ? "+clipboard" : "-clipboard")
-        if server.sound { args.append("/sound:sys:mac") }
+        // latency: how much sound FreeRDP may hold before it drops packets. At 0, its
+        // default, it keeps at most two packets, so packets that arrive together after
+        // a hold-up behind a video frame were dropped and the sound crackled. It also
+        // keeps the 150 ms the server sends ahead (see src/sound.rs).
+        if server.sound { args.append("/sound:sys:mac,latency:300") }
         if server.microphone { args.append("/microphone:sys:mac") }
 
         // The RDP alternate shell carries options for the OpenRDP server,
