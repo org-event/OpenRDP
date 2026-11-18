@@ -81,6 +81,17 @@ struct ServerEditor: View {
                     }
                 }
                 Section {
+                    Toggle("Слышать звук удалённого Мака здесь", isOn: $server.sound)
+                        .toggleStyle(.checkbox)
+                    Toggle("Передавать микрофон этого Мака", isOn: $server.microphone)
+                        .toggleStyle(.checkbox)
+                } header: {
+                    Text("Звук")
+                } footer: {
+                    Text("На удалённом Маке микрофон — вход «OpenRDP Microphone»: выберите его в звонке или в Настройках → Звук → Вход. Этот Мак начинает запись, только когда там его кто-то слушает.")
+                        .font(.caption).fg(.secondary)
+                }
+                Section {
                     TextEditor(text: $server.extraArguments)
                         .font(.system(.body, design: .monospaced))
                         .frame(height: 60)

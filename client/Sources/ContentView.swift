@@ -312,6 +312,8 @@ private struct ServerDetail: View {
                 : server.windowWidth.map { "\($0)×\(server.windowHeight ?? 0)" } ?? "Размер по умолчанию"),
             ("Сертификат", server.certificate.title),
             ("Буфер обмена", server.clipboard ? "Общий" : "Выключен"),
+            ("Звук", server.sound ? "На этом Маке" : "Выключен"),
+            ("Микрофон", server.microphone ? "Передаётся серверу" : "Выключен"),
             ("Экран Мака", server.curtain ? "Гаснет во время сессии" : "Не гаснет"),
             ("После отключения", server.keepForReconnect ? "Ждёт переподключения 5 минут" : "Сеанс убирается сразу"),
         ]

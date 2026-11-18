@@ -420,6 +420,7 @@ pub(crate) fn install_system(staged: &Path) -> anyhow::Result<()> {
         }
     }
     println!("Installed {DAEMON_PLIST}.");
+    crate::microphone::install_driver();
     prepare_remote_power_on(&config.binary);
     Ok(())
 }
@@ -514,6 +515,7 @@ pub(crate) fn uninstall_system() -> anyhow::Result<()> {
             std::fs::remove_file(path).with_context(|| format!("remove {path}"))?;
         }
     }
+    crate::microphone::uninstall_driver();
     // Its log, and the directory once it is empty.
     let _ = std::fs::remove_file(BROKER_LOG);
     let _ = std::fs::remove_dir(SYSTEM_DIR);
@@ -540,10 +542,20 @@ pub(crate) fn run() -> anyhow::Result<()> {
         signal(SIGINT, request_stop);
     }
     tracing::info!(user = %config.user, "watching the console");
+    // Root is needed for the driver, and an update brings no administrator
+    // password: the broker puts it in place each time it starts.
+    crate::microphone::install_driver();
+    let binary = binary_stamp();
 
     let mut last_uid = None;
 
     while !STOP.load(Ordering::Relaxed) {
+        // An update replaces the app's binary and cannot restart this root
+        // daemon. Exit, and launchd (KeepAlive) starts the new binary.
+        if binary.is_some() && binary_stamp() != binary {
+            tracing::info!("the app was updated; restarting the broker");
+            return Ok(());
+        }
         let uid = console_uid();
         if last_uid != uid {
             tracing::info!(?uid, "console user");
@@ -574,6 +586,12 @@ pub(crate) fn run() -> anyhow::Result<()> {
     stop_login_server();
     tracing::info!("broker stopped");
     Ok(())
+}
+
+/// Size and modification time of this binary, to notice an update.
+fn binary_stamp() -> Option<(u64, std::time::SystemTime)> {
+    let meta = std::fs::metadata(std::env::current_exe().ok()?).ok()?;
+    Some((meta.len(), meta.modified().ok()?))
 }
 
 fn console_uid() -> Option<u32> {

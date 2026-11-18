@@ -41,6 +41,12 @@ struct Server: Identifiable, Codable, Hashable {
     var windowWidth: Int?
     var windowHeight: Int?
     var clipboard = true
+    /// Play the server's sound on this Mac (FreeRDP `/sound:sys:mac`).
+    var sound = true
+    /// Lend this Mac's microphone to the server (`/microphone:sys:mac`). The
+    /// OpenRDP server turns it on only while an app there records from
+    /// "OpenRDP Microphone".
+    var microphone = true
     /// Darken the server Mac's own displays during the session. The OpenRDP
     /// server does it when the RDP alternate shell holds `curtain`.
     var curtain = false
@@ -77,6 +83,8 @@ struct Server: Identifiable, Codable, Hashable {
         windowWidth = try c.decodeIfPresent(Int.self, forKey: .windowWidth)
         windowHeight = try c.decodeIfPresent(Int.self, forKey: .windowHeight)
         clipboard = try c.decodeIfPresent(Bool.self, forKey: .clipboard) ?? d.clipboard
+        sound = try c.decodeIfPresent(Bool.self, forKey: .sound) ?? d.sound
+        microphone = try c.decodeIfPresent(Bool.self, forKey: .microphone) ?? d.microphone
         curtain = try c.decodeIfPresent(Bool.self, forKey: .curtain) ?? d.curtain
         keepForReconnect = try c.decodeIfPresent(Bool.self, forKey: .keepForReconnect) ?? d.keepForReconnect
         extraArguments = try c.decodeIfPresent(String.self, forKey: .extraArguments) ?? d.extraArguments
