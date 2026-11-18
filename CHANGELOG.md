@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.1-beta.3] - 2026-11-18
+
+### Added
+
+- **Microphone**: the client's microphone reaches the Mac as "OpenRDP Microphone", an audio input apps can pick, for calls in a browser or Zoom on the Mac. It comes over the `AUDIO_INPUT` channel (MS-RDPEAI) as 16-bit PCM, at the client's best rate. The client is asked to record only once an app on the Mac records from OpenRDP Microphone, and then records until the session ends. The device comes from a Core Audio driver in `/Library/Audio/Plug-Ins/HAL/OpenRDPAudio.driver`. The login-window service, which runs as root, puts it there when it starts and restarts itself when the app is updated, so an update brings the microphone without an administrator password; Core Audio restarts once for it, and sound on the Mac stops for a moment. `uninstall` removes it. "Check the server" shows whether macOS lists the input. `--no-microphone` turns it off; the login window has none. Turn the microphone on in the client: in OpenRDP Client it is on by default; in Windows App, "Microphone" under the PC's Devices & Audio; in FreeRDP, `/microphone:sys:mac`.
+- OpenRDP Client: a Sound section in a Mac's settings with two checkboxes, "Hear the remote Mac's sound here" and "Send this Mac's microphone", both on by default. They pass `/sound:sys:mac` and `/microphone:sys:mac` to FreeRDP. The app asks for the microphone permission before the first such session, since FreeRDP checks it only once, when it starts. Before, the app passed neither option.
+
 ## [1.7.1-beta.2] - 2026-11-13
 
 ### Added

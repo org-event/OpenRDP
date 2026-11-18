@@ -15,6 +15,7 @@ mod drives;
 mod encoder;
 mod input;
 mod input_source;
+mod microphone;
 mod power;
 mod rate;
 mod service;
@@ -88,6 +89,8 @@ OPTIONS:
                       [default: client]
   --no-drives         do not mount the drives the client redirects
   --no-sound          do not play the Mac's sound on the client
+  --no-microphone     do not offer the client's microphone to the Mac as
+                      OpenRDP Microphone
   --no-clipboard      do not share the clipboard (Universal Clipboard between
                       Macs on one Apple ID fights with it)
   --test-pattern      send a synthetic picture instead of the screen
@@ -124,6 +127,7 @@ struct Args {
     test_pattern: bool,
     clipboard: bool,
     sound: bool,
+    microphone: bool,
     drives: bool,
     curtain: curtain::Policy,
     cert: Option<std::path::PathBuf>,
@@ -182,6 +186,7 @@ fn parse_args(args: Vec<std::ffi::OsString>) -> anyhow::Result<Option<Args>> {
         test_pattern: args.contains("--test-pattern"),
         clipboard: !args.contains("--no-clipboard"),
         sound: !args.contains("--no-sound"),
+        microphone: !args.contains("--no-microphone"),
         drives: !args.contains("--no-drives"),
         curtain: args
             .opt_value_from_str("--curtain")?
@@ -445,6 +450,7 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
         args.fixed_size = true;
         args.clipboard = false;
         args.sound = false;
+        args.microphone = false;
         args.drives = false;
         args.curtain = curtain::Policy::Never;
         args.update = update::Mode::Off;
@@ -507,6 +513,10 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
         .with_sound_factory(
             args.sound
                 .then(|| Box::new(sound::MacSoundFactory::default()) as Box<_>),
+        )
+        .with_rdpeai_factory(
+            args.microphone
+                .then(|| Box::new(microphone::MicrophoneFactory::default()) as Box<_>),
         )
         .build();
     let accounts_path = users::path()?;

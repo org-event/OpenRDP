@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Combine
 import Foundation
 
@@ -161,6 +162,19 @@ final class AppModel: ObservableObject {
             launchError = "sdl-freerdp не найден. Установите FreeRDP: brew install freerdp"
             return
         }
+        // sdl-freerdp records in this app's name, and checks the permission
+        // once, when it starts: ask before, or the first session has no microphone.
+        if server.microphone, AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .audio) { _ in
+                DispatchQueue.main.async { self.launch(server, binary: binary) }
+            }
+            return
+        }
+        launch(server, binary: binary)
+    }
+
+    private func launch(_ server: Server, binary: URL) {
+        if let running = sessions[server.id], running.isRunning { return }
         applyHotkeys()
         do {
             let session = try Session(server: server, binary: binary,

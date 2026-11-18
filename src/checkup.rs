@@ -119,6 +119,20 @@ pub fn run(ru: bool) -> Vec<Check> {
             "The login-window service is not installed: after a logout RDP is gone"
         },
     );
+    let microphone = crate::microphone::device_present();
+    add(
+        pick(microphone, Mark::Warn),
+        if microphone {
+            "Микрофон клиента: вход «OpenRDP Microphone» есть в Настройках → Звук → Вход"
+        } else {
+            "Вход «OpenRDP Microphone» не появился: микрофон клиента не дойдёт до приложений"
+        },
+        if microphone {
+            "Client microphone: \"OpenRDP Microphone\" is in System Settings → Sound → Input"
+        } else {
+            "\"OpenRDP Microphone\" is missing: the client's microphone reaches no app"
+        },
+    );
     let autorestart = pmset("autorestart").as_deref() == Some("1");
     add(
         pick(autorestart, Mark::Warn),

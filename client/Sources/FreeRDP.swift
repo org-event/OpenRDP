@@ -63,6 +63,8 @@ enum FreeRDP {
             args.append("/size:\(w)x\(h)")
         }
         args.append(server.clipboard ? "+clipboard" : "-clipboard")
+        if server.sound { args.append("/sound:sys:mac") }
+        if server.microphone { args.append("/microphone:sys:mac") }
 
         // The RDP alternate shell carries options for the OpenRDP server,
         // joined with commas into one /shell, together with any the user added.

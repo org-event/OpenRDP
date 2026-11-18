@@ -26,6 +26,8 @@
 	<string>@MIN_MACOS@</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Чтобы подключаться к Mac в этой сети, показывать, какие из них включены, и будить их.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Чтобы вас слышали на Маке, к которому вы подключены.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrincipalClass</key>
