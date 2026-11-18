@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-11-18
+
+The betas 1.7.1-beta.1 to beta.6 below, for the stable channel. In short:
+
+### Added
+
+- **Microphone**: the client's microphone reaches the Mac as "OpenRDP Microphone", an audio input for calls in a browser or Zoom. An update installs its driver without an administrator password. In OpenRDP Client it is on by default.
+- OpenRDP Client: a Sound section with checkboxes for the remote Mac's sound and this Mac's microphone.
+- OpenRDP Client runs on macOS 11 Big Sur and 12 Monterey.
+
+### Changed
+
+- OpenRDP Client: with "Pass system shortcuts to the session" on, ⌃-only shortcuts (⌃←, ⌃→, ⌃↑) stay with the client Mac, behind a new setting.
+
+### Fixed
+
+- Sound no longer crackles in OpenRDP Client.
+- OpenRDP Client stretches the picture to the whole window on screens larger than a session can be, such as a 5K iMac.
+- Size matching no longer stops for good after a failed display configuration.
+- OpenRDP Client: system shortcuts could stay off after the session window lost focus.
+- Building the server's disk image retries when the volume is still busy.
+
 ## [1.7.1-beta.6] - 2026-11-18
 
 ### Fixed
@@ -317,7 +339,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.6...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.1...HEAD
+[1.7.1]: https://github.com/org-event/OpenRDP/compare/v1.7.0...v1.7.1
 [1.7.1-beta.6]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.5...v1.7.1-beta.6
 [1.7.1-beta.5]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.4...v1.7.1-beta.5
 [1.7.1-beta.4]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.3...v1.7.1-beta.4

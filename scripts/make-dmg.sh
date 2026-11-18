@@ -150,7 +150,13 @@ fi
 
 rm -rf "$mount/.fseventsd"
 sync
-hdiutil detach "$mount" -quiet
+# Finder may still hold the volume for a moment after arranging it, and
+# detach then fails with "Resource busy" (exit 16): try again, then force.
+for try in 1 2 3 4 5; do
+  hdiutil detach "$mount" -quiet && break
+  [[ $try -eq 5 ]] && { hdiutil detach "$mount" -force -quiet; break; }
+  sleep 2
+done
 attached=0
 mkdir -p "$(dirname "$output")"
 rm -f "$output"
