@@ -541,15 +541,16 @@ fn offered() -> Vec<AudioFormat> {
         .collect()
 }
 
-/// The client's best format: the highest rate, mono before stereo (a
-/// microphone is mono, and the driver is).
+/// The client's best format: the highest rate, stereo before mono. FreeRDP's
+/// macOS recorder records only in stereo and, asked for mono, closes the
+/// channel without a word; Core Audio mixes stereo down to the mono driver.
 fn choose(negotiated: &[AudioFormat]) -> Option<(u32, AudioFormat)> {
     negotiated
         .iter()
         .enumerate()
         .filter(|(_, f)| f.format == WaveFormat::PCM && f.bits_per_sample == 16)
         .filter(|(_, f)| (1..=2).contains(&f.n_channels))
-        .max_by_key(|(_, f)| (f.n_samples_per_sec, std::cmp::Reverse(f.n_channels)))
+        .max_by_key(|(_, f)| (f.n_samples_per_sec, f.n_channels))
         .and_then(|(index, f)| Some((u32::try_from(index).ok()?, f.clone())))
 }
 
@@ -680,7 +681,7 @@ impl RdpeaiServerBackend for Microphone {
         debug!(?negotiated, ?chosen, "microphone formats");
         let Some(mic) = device(MIC_UID) else {
             warn!(
-                "microphone: the OpenRDP Microphone driver is not loaded; run `openrdp install` again"
+                "microphone: the OpenRDP Microphone driver is not loaded; restart the broker: sudo launchctl kickstart -k system/com.openrdp.broker"
             );
             return;
         };
@@ -761,7 +762,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn prefers_the_highest_rate_then_mono() {
+    fn prefers_the_highest_rate_then_stereo() {
         let negotiated = [
             pcm(44_100, 2),
             pcm(48_000, 2),
@@ -769,8 +770,8 @@ mod tests {
             pcm(16_000, 1),
         ];
         let (index, format) = choose(&negotiated).unwrap();
-        assert_eq!(index, 2);
-        assert_eq!((format.n_samples_per_sec, format.n_channels), (48_000, 1));
+        assert_eq!(index, 1);
+        assert_eq!((format.n_samples_per_sec, format.n_channels), (48_000, 2));
     }
 
     #[test]

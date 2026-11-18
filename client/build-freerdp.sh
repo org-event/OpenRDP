@@ -162,6 +162,11 @@ build_sdl3_ttf() {
 build_freerdp() {
     local arch=$1 dir="$work/freerdp-$1"
     unpack "$src/FreeRDP-3.32.2.tar.gz" "$dir"
+    # Our changes to FreeRDP, each explained in its file.
+    local patch
+    for patch in "$here"/patches/*.patch; do
+        patch -d "$dir" -p1 --forward < "$patch"
+    done
     PKG_CONFIG_LIBDIR="$work/prefix-$arch/lib/pkgconfig" PKG_CONFIG_PATH="" \
     cmake_build "$arch" "$dir" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF \
         -DWITH_CLIENT=ON -DWITH_CLIENT_SDL=ON -DWITH_CLIENT_SDL3=ON -DWITH_CLIENT_SDL2=OFF \

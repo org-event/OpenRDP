@@ -6,7 +6,7 @@
 //! next to the video. The capture runs only while a client has the channel
 //! open; the Mac keeps playing through its own speakers too.
 
-use std::sync::mpsc;
+use std::sync::{Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, anyhow};
@@ -126,6 +126,23 @@ fn boxed(err: anyhow::Error) -> Box<dyn RdpsndError> {
 struct OutputIvars {
     events: UnboundedSender<ServerEvent>,
     started: Instant,
+    /// Bytes of silence that make up `LEAD_MS` at the capture rate.
+    lead_bytes: usize,
+    /// When the last sound went out; `None` before the first.
+    last_sent: Mutex<Option<Instant>>,
+}
+
+/// Silence sent ahead of the sound whenever it (re)starts. Clients play each
+/// packet the moment it arrives (FreeRDP's macOS player keeps no buffer of its
+/// own), so a packet held up behind a large video frame left a gap: the sound
+/// crackled. With this much already queued on the client, a late packet still
+/// arrives before its turn. It is also the extra delay of the sound.
+const LEAD_MS: u32 = 150;
+
+/// Bytes of silence for `ms` at `rate`, in whole frames.
+fn lead_bytes(rate: u32, ms: u32) -> usize {
+    let frames = u64::from(rate) * u64::from(ms) / 1000;
+    usize::try_from(frames).unwrap_or(0) * usize::from(CHANNELS) * usize::from(BITS / 8)
 }
 
 define_class!(
@@ -153,6 +170,25 @@ define_class!(
                     let ivars = self.ivars();
                     let timestamp =
                         u32::try_from(ivars.started.elapsed().as_millis()).unwrap_or(u32::MAX);
+                    // After a pause longer than the lead the client has run dry:
+                    // queue the lead again before the sound resumes.
+                    let now = Instant::now();
+                    let drained = ivars.last_sent.lock().ok().is_some_and(|mut last| {
+                        let drained = last.is_none_or(|at| {
+                            now.duration_since(at) > Duration::from_millis(LEAD_MS.into())
+                        });
+                        *last = Some(now);
+                        drained
+                    });
+                    if drained {
+                        debug!(ms = LEAD_MS, "sound: queued silence ahead");
+                        let _ = ivars
+                            .events
+                            .send(ServerEvent::Rdpsnd(RdpsndServerMessage::Wave(
+                                vec![0; ivars.lead_bytes],
+                                timestamp,
+                            )));
+                    }
                     let _ = ivars
                         .events
                         .send(ServerEvent::Rdpsnd(RdpsndServerMessage::Wave(
@@ -174,10 +210,12 @@ define_class!(
 );
 
 impl SoundOutput {
-    fn new(events: UnboundedSender<ServerEvent>) -> Retained<Self> {
+    fn new(events: UnboundedSender<ServerEvent>, rate: u32) -> Retained<Self> {
         let this = Self::alloc().set_ivars(OutputIvars {
             events,
             started: Instant::now(),
+            lead_bytes: lead_bytes(rate, LEAD_MS),
+            last_sent: Mutex::new(None),
         });
         // SAFETY: NSObject's init on a freshly allocated object.
         unsafe { msg_send![super(this), init] }
@@ -271,7 +309,7 @@ impl AudioCapture {
                 epoch: 0,
             });
 
-            let output = SoundOutput::new(events);
+            let output = SoundOutput::new(events, rate);
             let queue = DispatchQueue::new("openrdp.sound", None);
             let stream = SCStream::initWithFilter_configuration_delegate(
                 SCStream::alloc(),
@@ -342,6 +380,14 @@ mod tests {
             .map(|b| i16::from_le_bytes(*b))
             .collect();
         assert_eq!(samples, [32767, 16384, -32767, 32767]);
+    }
+
+    #[test]
+    fn lead_is_whole_frames() {
+        assert_eq!(lead_bytes(48_000, 150), 7_200 * 4);
+        assert_eq!(lead_bytes(44_100, 150), 6_615 * 4);
+        // A Wave PDU body is at most 64 KiB.
+        assert!(lead_bytes(48_000, LEAD_MS) < 65_536);
     }
 
     #[test]
