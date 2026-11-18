@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.1-beta.6] - 2026-11-18
+
+### Fixed
+
+- **Microphone crackled** badly: each time Core Audio took sound for "OpenRDP Microphone", the server's jitter buffer handed over one buffer and threw away the rest of what it held, so about 40% of the client's microphone was lost in gaps of 10 to 50 ms. It now keeps what it does not hand over. A test, `cargo test live_tone -- --ignored`, plays a tone through the same path to record and listen to.
+
 ## [1.7.1-beta.5] - 2026-11-18
 
 ### Fixed
@@ -311,7 +317,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.5...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.6...HEAD
+[1.7.1-beta.6]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.5...v1.7.1-beta.6
 [1.7.1-beta.5]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.4...v1.7.1-beta.5
 [1.7.1-beta.4]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.3...v1.7.1-beta.4
 [1.7.1-beta.3]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.2...v1.7.1-beta.3

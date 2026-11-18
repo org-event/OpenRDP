@@ -357,9 +357,11 @@ impl Jitter {
         }
         let mut filled = 0;
         if self.playing {
-            for (slot, sample) in out.iter_mut().zip(self.samples.drain(..)) {
+            // drain(..n), not drain(..): a drained range is removed whole, also
+            // the part zip never takes, which threw away all but one buffer.
+            filled = self.samples.len().min(out.len());
+            for (slot, sample) in out.iter_mut().zip(self.samples.drain(..filled)) {
                 *slot = sample;
-                filled += 1;
             }
             if filled < out.len() {
                 self.playing = false;
@@ -787,8 +789,10 @@ mod tests {
         jitter.pull(&mut out);
         assert_eq!(out, [0, 0], "not enough buffered yet");
         jitter.push(&[3, 0, 4, 0]);
+        jitter.pull(&mut out[..1]);
+        assert_eq!(out[0], 1);
         jitter.pull(&mut out);
-        assert_eq!(out, [1, 2]);
+        assert_eq!(out, [2, 3], "a pull keeps what it does not take");
         let many: Vec<u8> = (10..20).flat_map(|n: i16| n.to_le_bytes()).collect();
         jitter.push(&many);
         assert_eq!(jitter.samples.len(), 4, "dropped down to the target");
@@ -800,5 +804,35 @@ mod tests {
         let plist = driver_plist();
         assert!(plist.contains("OpenRDPAudio_Create"));
         assert!(plist.contains(PLUGIN_TYPE_UUID));
+    }
+}
+
+#[cfg(test)]
+mod live {
+    use super::*;
+
+    /// Plays 4 s of a 440 Hz tone into the feed, stereo, in 20 ms packets, as
+    /// a client would. Record "OpenRDP Microphone" meanwhile and listen: the
+    /// tone must be clean. `cargo test live_tone -- --ignored`.
+    #[test]
+    #[ignore = "needs the OpenRDP Microphone driver"]
+    fn live_tone() {
+        let format = pcm(48_000, 2);
+        let player = start_player(&format).expect("player");
+        let mut n = 0u64;
+        let start = std::time::Instant::now();
+        for packet in 0..200u32 {
+            let mut data = Vec::with_capacity(960 * 4);
+            for _ in 0..960 {
+                let v =
+                    ((n as f64 * 440.0 * std::f64::consts::TAU / 48_000.0).sin() * 8000.0) as i16;
+                data.extend_from_slice(&v.to_le_bytes());
+                data.extend_from_slice(&v.to_le_bytes());
+                n += 1;
+            }
+            player.push(&data);
+            let due = start + std::time::Duration::from_millis(20 * u64::from(packet + 1));
+            std::thread::sleep(due.saturating_duration_since(std::time::Instant::now()));
+        }
     }
 }
