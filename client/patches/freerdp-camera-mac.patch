@@ -1,0 +1,626 @@
+Redirect the Mac's camera (MS-RDPECAM) with AVFoundation.
+
+FreeRDP's camera channel has only Video4Linux and Android back ends; on macOS
+the build stopped at "libv4l-dev required". This adds a "mac" subsystem
+(channels/rdpecam/client/mac/camera_mac.m): it announces the Mac's cameras,
+the system default first, as RDCamera_Device_<n>, offers their sizes up to
+1920x1080 at up to 30 fps as MJPEG, and compresses each frame with
+VideoToolbox's JPEG encoder. The camera turns on when the server starts the
+stream and off when it stops it.
+
+encoding.c configured an H.264 encoder for every stream, also for MJPEG passed
+through as it is. Our FFmpeg has decoders only, so that failed and no stream
+could start; the encoder is now set up only for H.264 output.
+
+The client asks for the channel with /vc:rdpecam.
+
+diff --color -ruN a/channels/rdpecam/client/CMakeLists.txt b/channels/rdpecam/client/CMakeLists.txt
+--- a/channels/rdpecam/client/CMakeLists.txt
++++ b/channels/rdpecam/client/CMakeLists.txt
+@@ -17,8 +17,10 @@
+ 
+ define_channel_client("rdpecam")
+ 
+-# currently camera redirect client supported for platforms with Video4Linux or Android
+-if(NOT ANDROID)
++# currently camera redirect client supported for platforms with Video4Linux, Android or macOS
++if(APPLE AND NOT IOS)
++  set(WITH_MAC_CAMERA ON)
++elseif(NOT ANDROID)
+   find_package(V4L)
+   if(V4L_FOUND)
+     set(WITH_V4L ON)
+@@ -41,4 +43,8 @@
+ 
+ if(ANDROID)
+   add_channel_client_subsystem(${MODULE_PREFIX} ${CHANNEL_NAME} "android" "")
++endif()
++
++if(WITH_MAC_CAMERA)
++  add_channel_client_subsystem(${MODULE_PREFIX} ${CHANNEL_NAME} "mac" "")
+ endif()
+diff --color -ruN a/channels/rdpecam/client/camera_device_enum_main.c b/channels/rdpecam/client/camera_device_enum_main.c
+--- a/channels/rdpecam/client/camera_device_enum_main.c
++++ b/channels/rdpecam/client/camera_device_enum_main.c
+@@ -569,6 +569,8 @@
+ 	ecam->subsystem = "v4l";
+ #elif defined(__ANDROID__)
+ 	ecam->subsystem = "android";
++#elif defined(__APPLE__)
++	ecam->subsystem = "mac";
+ #else
+ 	ecam->subsystem = nullptr;
+ #endif
+diff --color -ruN a/channels/rdpecam/client/encoding.c b/channels/rdpecam/client/encoding.c
+--- a/channels/rdpecam/client/encoding.c
++++ b/channels/rdpecam/client/encoding.c
+@@ -123,6 +123,11 @@
+ 	if (!ecam_init_video_context(stream))
+ 		return FALSE;
+ 
++	/* Only H.264 output needs the encoder. Without one in the build (an FFmpeg
++	 * with decoders only), configuring it fails and no stream could start. */
++	if (streamOutputFormat(stream) != CAM_MEDIA_FORMAT_H264)
++		return TRUE;
++
+ 	const UINT32 framerate =
+ 	    stream->currMediaType.FrameRateNumerator / stream->currMediaType.FrameRateDenominator;
+ 
+diff --color -ruN a/channels/rdpecam/client/mac/CMakeLists.txt b/channels/rdpecam/client/mac/CMakeLists.txt
+--- a/channels/rdpecam/client/mac/CMakeLists.txt
++++ b/channels/rdpecam/client/mac/CMakeLists.txt
+@@ -0,0 +1,37 @@
++# FreeRDP: A Remote Desktop Protocol Implementation
++# FreeRDP cmake build script
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++if(APPLE AND NOT IOS)
++
++  define_channel_client_subsystem("rdpecam" "mac" "")
++
++  find_library(AVFOUNDATION AVFoundation)
++  find_library(COREMEDIA CoreMedia)
++  find_library(COREVIDEO CoreVideo)
++  find_library(VIDEOTOOLBOX VideoToolbox)
++  find_library(FOUNDATION Foundation)
++
++  set(${MODULE_PREFIX}_SRCS camera_mac.m)
++  set_source_files_properties(camera_mac.m PROPERTIES COMPILE_FLAGS -fobjc-arc)
++
++  set(${MODULE_PREFIX}_LIBS winpr freerdp ${AVFOUNDATION} ${COREMEDIA} ${COREVIDEO} ${VIDEOTOOLBOX}
++                            ${FOUNDATION}
++  )
++
++  include_directories(..)
++
++  add_channel_client_subsystem_library(${MODULE_PREFIX} ${MODULE_NAME} ${CHANNEL_NAME} "" TRUE "")
++
++endif()
+diff --color -ruN a/channels/rdpecam/client/mac/camera_mac.m b/channels/rdpecam/client/mac/camera_mac.m
+--- a/channels/rdpecam/client/mac/camera_mac.m
++++ b/channels/rdpecam/client/mac/camera_mac.m
+@@ -0,0 +1,513 @@
++/**
++ * FreeRDP: A Remote Desktop Protocol Implementation
++ * MS-RDPECAM Implementation, macOS camera with AVFoundation
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++/* The Mac's cameras, captured with AVFoundation and sent as MJPEG: each frame
++ * is compressed with VideoToolbox's JPEG encoder (in hardware where the Mac
++ * has one), so the build needs no video encoder of its own and a 720p stream
++ * stays at a few MB/s. Cameras are announced as RDCamera_Device_<n>, the
++ * system default first. */
++
++#import <AVFoundation/AVFoundation.h>
++#import <CoreMedia/CoreMedia.h>
++#import <CoreVideo/CoreVideo.h>
++#import <VideoToolbox/VideoToolbox.h>
++
++#include <winpr/wlog.h>
++
++#include "camera.h"
++
++#define TAG CHANNELS_TAG("rdpecam-mac.client")
++
++/* Largest picture offered; more only costs bandwidth. */
++#define CAM_MAC_MAX_WIDTH 1920
++#define CAM_MAC_MAX_HEIGHT 1080
++#define CAM_MAC_MAX_FPS 30
++#define CAM_MAC_JPEG_QUALITY 0.6
++#define CAM_MAC_MAX_DEVICES 8
++
++@interface OpenRDPCameraCapture : NSObject <AVCaptureVideoDataOutputSampleBufferDelegate>
++{
++  @public
++	CameraDevice* dev;
++	size_t streamIndex;
++	ICamHalSampleCapturedCallback callback;
++}
++@property(nonatomic, strong) AVCaptureSession* session;
++@property(nonatomic, strong) dispatch_queue_t queue;
++@property(nonatomic, assign) VTCompressionSessionRef compression;
++@property(nonatomic, strong) NSMutableData* jpeg;
++@property(nonatomic, assign) BOOL running;
++@end
++
++typedef struct
++{
++	ICamHal iHal;
++	/* Unique IDs of the announced cameras, by their index in the channel name. */
++	char* uniqueIds[CAM_MAC_MAX_DEVICES];
++	size_t nDevices;
++	void* capture; /* OpenRDPCameraCapture, retained; one stream at a time */
++} CamMacHal;
++
++static void cam_mac_jpeg_output(void* refcon, void* frameRefcon, OSStatus status,
++                                VTEncodeInfoFlags flags, CMSampleBufferRef sample)
++{
++	WINPR_UNUSED(frameRefcon);
++	WINPR_UNUSED(flags);
++	OpenRDPCameraCapture* capture = (__bridge OpenRDPCameraCapture*)refcon;
++	if (status != noErr || !sample)
++		return;
++	CMBlockBufferRef block = CMSampleBufferGetDataBuffer(sample);
++	if (!block)
++		return;
++	const size_t length = CMBlockBufferGetDataLength(block);
++	NSMutableData* jpeg = [NSMutableData dataWithLength:length];
++	if (CMBlockBufferCopyDataBytes(block, 0, length, jpeg.mutableBytes) == kCMBlockBufferNoErr)
++		capture.jpeg = jpeg;
++}
++
++@implementation OpenRDPCameraCapture
++
++- (void)captureOutput:(AVCaptureOutput*)output
++    didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
++           fromConnection:(AVCaptureConnection*)connection
++{
++	(void)output;
++	(void)connection;
++	if (!self.running || !self.compression)
++		return;
++	CVImageBufferRef image = CMSampleBufferGetImageBuffer(sampleBuffer);
++	if (!image)
++		return;
++
++	/* Encode and wait for the picture, so the sample goes out on this queue,
++	 * which StopStream drains before FreeRDP frees the stream. */
++	self.jpeg = nil;
++	const OSStatus status = VTCompressionSessionEncodeFrame(
++	    self.compression, image, CMSampleBufferGetPresentationTimeStamp(sampleBuffer),
++	    kCMTimeInvalid, nullptr, nullptr, nullptr);
++	if (status != noErr)
++	{
++		WLog_DBG(TAG, "VTCompressionSessionEncodeFrame: %d", (int)status);
++		return;
++	}
++	VTCompressionSessionCompleteFrames(self.compression, kCMTimeInvalid);
++	NSData* jpeg = self.jpeg;
++	self.jpeg = nil;
++	if (!jpeg || jpeg.length < 2)
++		return;
++
++	const UINT rc = callback(dev, streamIndex, jpeg.bytes, jpeg.length);
++	if (rc != CHANNEL_RC_OK)
++		WLog_DBG(TAG, "sample callback: %" PRIu32, rc);
++}
++
++@end
++
++static NSArray<AVCaptureDevice*>* cam_mac_devices(void)
++{
++	NSMutableArray<AVCaptureDeviceType>* types =
++	    [NSMutableArray arrayWithObject:AVCaptureDeviceTypeBuiltInWideAngleCamera];
++	if (@available(macOS 14.0, *))
++	{
++		[types addObject:AVCaptureDeviceTypeExternal];
++		[types addObject:AVCaptureDeviceTypeContinuityCamera];
++	}
++	else
++	{
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wdeprecated-declarations"
++		[types addObject:AVCaptureDeviceTypeExternalUnknown];
++#pragma clang diagnostic pop
++	}
++	AVCaptureDeviceDiscoverySession* discovery =
++	    [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:types
++	                                                           mediaType:AVMediaTypeVideo
++	                                                            position:AVCaptureDevicePositionUnspecified];
++	NSMutableArray<AVCaptureDevice*>* devices = [NSMutableArray array];
++	AVCaptureDevice* preferred = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
++	if (preferred)
++		[devices addObject:preferred];
++	for (AVCaptureDevice* device in discovery.devices)
++	{
++		if (![device.uniqueID isEqualToString:preferred.uniqueID])
++			[devices addObject:device];
++	}
++	return devices;
++}
++
++static void cam_mac_forget_devices(CamMacHal* hal)
++{
++	for (size_t i = 0; i < hal->nDevices; i++)
++	{
++		free(hal->uniqueIds[i]);
++		hal->uniqueIds[i] = nullptr;
++	}
++	hal->nDevices = 0;
++}
++
++static UINT cam_mac_enumerate(ICamHal* ihal, ICamHalEnumCallback callback, CameraPlugin* ecam,
++                              GENERIC_CHANNEL_CALLBACK* hchannel)
++{
++	CamMacHal* hal = (CamMacHal*)ihal;
++	WINPR_ASSERT(hal);
++
++	UINT count = 0;
++	@autoreleasepool
++	{
++		cam_mac_forget_devices(hal);
++		for (AVCaptureDevice* device in cam_mac_devices())
++		{
++			if (hal->nDevices >= CAM_MAC_MAX_DEVICES)
++				break;
++			char channel[32] = WINPR_C_ARRAY_INIT;
++			(void)_snprintf(channel, sizeof(channel), "RDCamera_Device_%" PRIuz, hal->nDevices);
++			hal->uniqueIds[hal->nDevices] = _strdup(device.uniqueID.UTF8String);
++			if (!hal->uniqueIds[hal->nDevices])
++				break;
++			hal->nDevices++;
++			WLog_INFO(TAG, "camera %s: %s", channel, device.localizedName.UTF8String);
++			if (callback(ecam, hchannel, channel, device.localizedName.UTF8String) ==
++			    CHANNEL_RC_OK)
++				count++;
++		}
++	}
++	return count;
++}
++
++static AVCaptureDevice* cam_mac_device(CamMacHal* hal, const char* deviceId)
++{
++	const char* prefix = "RDCamera_Device_";
++	if (!deviceId || strncmp(deviceId, prefix, strlen(prefix)) != 0)
++		return nil;
++	const unsigned long index = strtoul(deviceId + strlen(prefix), nullptr, 10);
++	if (index >= hal->nDevices)
++		return nil;
++	return [AVCaptureDevice
++	    deviceWithUniqueID:[NSString stringWithUTF8String:hal->uniqueIds[index]]];
++}
++
++static BOOL cam_mac_activate(ICamHal* ihal, const char* deviceId, CAM_ERROR_CODE* errorCode)
++{
++	WINPR_UNUSED(ihal);
++	WINPR_UNUSED(deviceId);
++	*errorCode = CAM_ERROR_CODE_None;
++	return TRUE;
++}
++
++static BOOL cam_mac_deactivate(ICamHal* ihal, const char* deviceId, CAM_ERROR_CODE* errorCode)
++{
++	WINPR_UNUSED(ihal);
++	WINPR_UNUSED(deviceId);
++	*errorCode = CAM_ERROR_CODE_None;
++	return TRUE;
++}
++
++/* The highest rate in `format` up to CAM_MAC_MAX_FPS, 0 if none. */
++static UINT32 cam_mac_fps(AVCaptureDeviceFormat* format)
++{
++	double best = 0;
++	for (AVFrameRateRange* range in format.videoSupportedFrameRateRanges)
++	{
++		const double fps = MIN(range.maxFrameRate, (double)CAM_MAC_MAX_FPS);
++		if (fps >= range.minFrameRate && fps > best)
++			best = fps;
++	}
++	return (UINT32)best;
++}
++
++static INT16 cam_mac_get_media_type_descriptions(ICamHal* ihal, const char* deviceId,
++                                                 size_t streamIndex,
++                                                 const CAM_MEDIA_FORMAT_INFO* supportedFormats,
++                                                 size_t nSupportedFormats,
++                                                 CAM_MEDIA_TYPE_DESCRIPTION* mediaTypes,
++                                                 size_t* nMediaTypes)
++{
++	WINPR_UNUSED(streamIndex);
++	CamMacHal* hal = (CamMacHal*)ihal;
++	const size_t maxMediaTypes = *nMediaTypes;
++	*nMediaTypes = 0;
++
++	INT16 formatIndex = -1;
++	for (size_t i = 0; i < nSupportedFormats; i++)
++	{
++		if (supportedFormats[i].inputFormat == CAM_MEDIA_FORMAT_MJPG &&
++		    supportedFormats[i].outputFormat == CAM_MEDIA_FORMAT_MJPG)
++		{
++			formatIndex = (INT16)i;
++			break;
++		}
++	}
++	if (formatIndex < 0)
++	{
++		WLog_ERR(TAG, "MJPEG pass-through is not supported");
++		return -1;
++	}
++
++	size_t n = 0;
++	@autoreleasepool
++	{
++		AVCaptureDevice* device = cam_mac_device(hal, deviceId);
++		if (!device)
++			return -1;
++		for (AVCaptureDeviceFormat* format in device.formats)
++		{
++			const CMVideoDimensions size =
++			    CMVideoFormatDescriptionGetDimensions(format.formatDescription);
++			const UINT32 fps = cam_mac_fps(format);
++			if (size.width <= 0 || size.height <= 0 || size.width > CAM_MAC_MAX_WIDTH ||
++			    size.height > CAM_MAC_MAX_HEIGHT || fps == 0)
++				continue;
++
++			BOOL seen = FALSE;
++			for (size_t i = 0; i < n; i++)
++			{
++				if (mediaTypes[i].Width == (UINT32)size.width &&
++				    mediaTypes[i].Height == (UINT32)size.height)
++				{
++					mediaTypes[i].FrameRateNumerator = MAX(mediaTypes[i].FrameRateNumerator, fps);
++					seen = TRUE;
++				}
++			}
++			if (seen)
++				continue;
++			if (n >= maxMediaTypes)
++				break;
++			mediaTypes[n] = (CAM_MEDIA_TYPE_DESCRIPTION){ .Format = CAM_MEDIA_FORMAT_MJPG,
++				                                          .Width = (UINT32)size.width,
++				                                          .Height = (UINT32)size.height,
++				                                          .FrameRateNumerator = fps,
++				                                          .FrameRateDenominator = 1,
++				                                          .PixelAspectRatioNumerator = 1,
++				                                          .PixelAspectRatioDenominator = 1 };
++			n++;
++		}
++	}
++
++	if (n == 0)
++	{
++		WLog_ERR(TAG, "camera %s offers no picture up to %dx%d", deviceId, CAM_MAC_MAX_WIDTH,
++		         CAM_MAC_MAX_HEIGHT);
++		return -1;
++	}
++	*nMediaTypes = n;
++	return formatIndex;
++}
++
++static void cam_mac_stop(CamMacHal* hal)
++{
++	if (!hal->capture)
++		return;
++	OpenRDPCameraCapture* capture = (__bridge_transfer OpenRDPCameraCapture*)hal->capture;
++	hal->capture = nullptr;
++
++	[capture.session stopRunning];
++	/* No sample may reach FreeRDP once this returns. */
++	dispatch_sync(capture.queue, ^{
++	  capture.running = NO;
++	});
++	if (capture.compression)
++	{
++		VTCompressionSessionInvalidate(capture.compression);
++		CFRelease(capture.compression);
++		capture.compression = nullptr;
++	}
++	WLog_INFO(TAG, "camera stopped");
++}
++
++/* The device format of exactly that size with the highest rate up to `fps`. */
++static AVCaptureDeviceFormat* cam_mac_format(AVCaptureDevice* device, UINT32 width, UINT32 height)
++{
++	AVCaptureDeviceFormat* best = nil;
++	UINT32 bestFps = 0;
++	for (AVCaptureDeviceFormat* format in device.formats)
++	{
++		const CMVideoDimensions size =
++		    CMVideoFormatDescriptionGetDimensions(format.formatDescription);
++		const UINT32 fps = cam_mac_fps(format);
++		if ((UINT32)size.width == width && (UINT32)size.height == height && fps > bestFps)
++		{
++			best = format;
++			bestFps = fps;
++		}
++	}
++	return best;
++}
++
++static CAM_ERROR_CODE cam_mac_start_stream(ICamHal* ihal, CameraDevice* dev, size_t streamIndex,
++                                           const CAM_MEDIA_TYPE_DESCRIPTION* mediaType,
++                                           ICamHalSampleCapturedCallback callback)
++{
++	CamMacHal* hal = (CamMacHal*)ihal;
++	WINPR_ASSERT(hal);
++	WINPR_ASSERT(mediaType);
++
++	if (mediaType->Format != CAM_MEDIA_FORMAT_MJPG || mediaType->Width == 0 ||
++	    mediaType->Height == 0)
++		return CAM_ERROR_CODE_InvalidMediaType;
++
++	cam_mac_stop(hal);
++
++	@autoreleasepool
++	{
++		if ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo] !=
++		    AVAuthorizationStatusAuthorized)
++		{
++			WLog_WARN(TAG, "no camera permission; allow it in System Settings > Privacy & "
++			               "Security > Camera");
++			return CAM_ERROR_CODE_NotInitialized;
++		}
++
++		AVCaptureDevice* device = cam_mac_device(hal, dev->deviceId);
++		if (!device)
++			return CAM_ERROR_CODE_ItemNotFound;
++
++		NSError* error = nil;
++		AVCaptureDeviceInput* input = [AVCaptureDeviceInput deviceInputWithDevice:device
++		                                                                    error:&error];
++		if (!input)
++		{
++			WLog_ERR(TAG, "camera input: %s", error.localizedDescription.UTF8String);
++			return CAM_ERROR_CODE_UnexpectedError;
++		}
++
++		OpenRDPCameraCapture* capture = [[OpenRDPCameraCapture alloc] init];
++		capture->dev = dev;
++		capture->streamIndex = streamIndex;
++		capture->callback = callback;
++		capture.queue = dispatch_queue_create("com.openrdp.camera", DISPATCH_QUEUE_SERIAL);
++		capture.session = [[AVCaptureSession alloc] init];
++
++		AVCaptureVideoDataOutput* output = [[AVCaptureVideoDataOutput alloc] init];
++		output.alwaysDiscardsLateVideoFrames = YES;
++		output.videoSettings = @{
++			(id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
++			(id)kCVPixelBufferWidthKey : @(mediaType->Width),
++			(id)kCVPixelBufferHeightKey : @(mediaType->Height),
++		};
++		[output setSampleBufferDelegate:capture queue:capture.queue];
++
++		[capture.session beginConfiguration];
++		if (![capture.session canAddInput:input] || ![capture.session canAddOutput:output])
++		{
++			[capture.session commitConfiguration];
++			WLog_ERR(TAG, "camera session refuses the input or the output");
++			return CAM_ERROR_CODE_UnexpectedError;
++		}
++		[capture.session addInput:input];
++		[capture.session addOutput:output];
++		[capture.session commitConfiguration];
++
++		/* After the session is configured, or it picks its own format again. */
++		AVCaptureDeviceFormat* format = cam_mac_format(device, mediaType->Width, mediaType->Height);
++		if (format && [device lockForConfiguration:&error])
++		{
++			device.activeFormat = format;
++			const UINT32 fps = mediaType->FrameRateNumerator /
++			                   MAX(mediaType->FrameRateDenominator, (UINT32)1);
++			if (fps > 0 && fps <= cam_mac_fps(format))
++			{
++				device.activeVideoMinFrameDuration = CMTimeMake(1, (int32_t)fps);
++				device.activeVideoMaxFrameDuration = CMTimeMake(1, (int32_t)fps);
++			}
++			[device unlockForConfiguration];
++		}
++
++		VTCompressionSessionRef compression = nullptr;
++		OSStatus status = VTCompressionSessionCreate(
++		    kCFAllocatorDefault, (int32_t)mediaType->Width, (int32_t)mediaType->Height,
++		    kCMVideoCodecType_JPEG, nullptr, nullptr, kCFAllocatorDefault, cam_mac_jpeg_output,
++		    (__bridge void*)capture, &compression);
++		if (status != noErr)
++		{
++			WLog_ERR(TAG, "VTCompressionSessionCreate: %d", (int)status);
++			return CAM_ERROR_CODE_UnexpectedError;
++		}
++		VTSessionSetProperty(compression, kVTCompressionPropertyKey_Quality,
++		                     (__bridge CFTypeRef) @(CAM_MAC_JPEG_QUALITY));
++		VTSessionSetProperty(compression, kVTCompressionPropertyKey_RealTime, kCFBooleanTrue);
++		capture.compression = compression;
++		capture.running = YES;
++
++		[capture.session startRunning];
++		if (!capture.session.running)
++		{
++			capture.running = NO;
++			VTCompressionSessionInvalidate(compression);
++			CFRelease(compression);
++			capture.compression = nullptr;
++			WLog_ERR(TAG, "camera session did not start");
++			return CAM_ERROR_CODE_UnexpectedError;
++		}
++		hal->capture = (__bridge_retained void*)capture;
++		WLog_INFO(TAG, "camera %s: %s, %" PRIu32 "x%" PRIu32 " MJPEG", dev->deviceId,
++		          device.localizedName.UTF8String, mediaType->Width, mediaType->Height);
++	}
++	return CAM_ERROR_CODE_None;
++}
++
++static CAM_ERROR_CODE cam_mac_stop_stream(ICamHal* ihal, const char* deviceId, size_t streamIndex)
++{
++	WINPR_UNUSED(deviceId);
++	WINPR_UNUSED(streamIndex);
++	CamMacHal* hal = (CamMacHal*)ihal;
++	WINPR_ASSERT(hal);
++	@autoreleasepool
++	{
++		cam_mac_stop(hal);
++	}
++	return CAM_ERROR_CODE_None;
++}
++
++static CAM_ERROR_CODE cam_mac_free(ICamHal* ihal)
++{
++	CamMacHal* hal = (CamMacHal*)ihal;
++	if (!hal)
++		return CAM_ERROR_CODE_NotInitialized;
++	@autoreleasepool
++	{
++		cam_mac_stop(hal);
++	}
++	cam_mac_forget_devices(hal);
++	free(hal);
++	return CAM_ERROR_CODE_None;
++}
++
++FREERDP_ENTRY_POINT(UINT VCAPITYPE mac_freerdp_rdpecam_client_subsystem_entry(
++    PFREERDP_CAMERA_HAL_ENTRY_POINTS pEntryPoints))
++{
++	WINPR_ASSERT(pEntryPoints);
++
++	CamMacHal* hal = (CamMacHal*)calloc(1, sizeof(CamMacHal));
++	if (!hal)
++		return CHANNEL_RC_NO_MEMORY;
++
++	hal->iHal.Enumerate = cam_mac_enumerate;
++	hal->iHal.Activate = cam_mac_activate;
++	hal->iHal.Deactivate = cam_mac_deactivate;
++	hal->iHal.GetMediaTypeDescriptions = cam_mac_get_media_type_descriptions;
++	hal->iHal.StartStream = cam_mac_start_stream;
++	hal->iHal.StopStream = cam_mac_stop_stream;
++	hal->iHal.Free = cam_mac_free;
++
++	const UINT ret = pEntryPoints->pRegisterCameraHal(pEntryPoints->plugin, &hal->iHal);
++	if (ret != CHANNEL_RC_OK)
++	{
++		WLog_ERR(TAG, "RegisterCameraHal failed: %" PRIu32, ret);
++		cam_mac_free(&hal->iHal);
++	}
++	return ret;
++}

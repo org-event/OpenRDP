@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Camera**: the client's camera reaches the Mac over the video capture channel (MS-RDPECAM), for calls in a browser, Zoom or FaceTime. macOS lets a camera into apps only through a Camera Extension, which needs an Apple Developer ID to install, so OpenRDP feeds OBS Studio's: apps pick "OBS Virtual Camera". Install OBS Studio 30 or later on the Mac, click "Start Virtual Camera" there once and allow the extension in System Settings; OBS need not run after that. The server asks the client for MJPEG up to 1280x720 at 30 fps (a few MB/s) and starts the client's camera only while an app uses OBS Virtual Camera. "Check the server" shows whether the camera is there. `--no-camera` turns it off; the login window has none. Turn it on in the client: OpenRDP Client has a Camera checkbox, off by default; FreeRDP 3 takes `/vc:rdpecam` on Linux, and on macOS only with this project's patch. Not yet tried with OBS and two Macs: whether the server's own feed counts as "in use" decides whether the client's camera turns off when the call ends or when the session does.
+- OpenRDP Client: a Camera section with a checkbox for this Mac's camera. FreeRDP gets a macOS camera back end (`client/patches/freerdp-camera-mac.patch`): AVFoundation capture, JPEG from VideoToolbox.
+
 ## [1.7.2-beta.1] - 2026-11-19
 
 ### Fixed
