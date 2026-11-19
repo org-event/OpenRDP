@@ -92,6 +92,15 @@ struct ServerEditor: View {
                         .font(.caption).fg(.secondary)
                 }
                 Section {
+                    Toggle("Передавать камеру этого Мака", isOn: $server.camera)
+                        .toggleStyle(.checkbox)
+                } header: {
+                    Text("Камера")
+                } footer: {
+                    Text("На удалённом Маке камера — «OBS Virtual Camera»: там нужен OBS Studio 30 или новее, в нём один раз нажмите «Start Virtual Camera» и разрешите расширение в Системных настройках. Камера этого Мака включается, только когда там её кто-то смотрит.")
+                        .font(.caption).fg(.secondary)
+                }
+                Section {
                     TextEditor(text: $server.extraArguments)
                         .font(.system(.body, design: .monospaced))
                         .frame(height: 60)

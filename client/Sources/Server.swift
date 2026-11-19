@@ -47,6 +47,10 @@ struct Server: Identifiable, Codable, Hashable {
     /// OpenRDP server turns it on only while an app there records from
     /// "OpenRDP Microphone".
     var microphone = true
+    /// Lend this Mac's camera to the server (`/vc:rdpecam`). The OpenRDP server
+    /// shows it as "OBS Virtual Camera" and turns it on only while an app
+    /// there uses that camera. Off by default: it needs OBS on the server.
+    var camera = false
     /// Darken the server Mac's own displays during the session. The OpenRDP
     /// server does it when the RDP alternate shell holds `curtain`.
     var curtain = false
@@ -85,6 +89,7 @@ struct Server: Identifiable, Codable, Hashable {
         clipboard = try c.decodeIfPresent(Bool.self, forKey: .clipboard) ?? d.clipboard
         sound = try c.decodeIfPresent(Bool.self, forKey: .sound) ?? d.sound
         microphone = try c.decodeIfPresent(Bool.self, forKey: .microphone) ?? d.microphone
+        camera = try c.decodeIfPresent(Bool.self, forKey: .camera) ?? d.camera
         curtain = try c.decodeIfPresent(Bool.self, forKey: .curtain) ?? d.curtain
         keepForReconnect = try c.decodeIfPresent(Bool.self, forKey: .keepForReconnect) ?? d.keepForReconnect
         extraArguments = try c.decodeIfPresent(String.self, forKey: .extraArguments) ?? d.extraArguments

@@ -69,6 +69,7 @@ enum FreeRDP {
         // keeps the 150 ms the server sends ahead (see src/sound.rs).
         if server.sound { args.append("/sound:sys:mac,latency:300") }
         if server.microphone { args.append("/microphone:sys:mac") }
+        if server.camera { args.append("/vc:rdpecam") }
 
         // The RDP alternate shell carries options for the OpenRDP server,
         // joined with commas into one /shell, together with any the user added.

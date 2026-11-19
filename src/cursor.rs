@@ -20,7 +20,7 @@ const MAX_SIDE: f64 = 96.0;
 unsafe extern "C" {}
 
 unsafe extern "C-unwind" {
-    fn CGBitmapContextCreate(
+    pub(crate) fn CGBitmapContextCreate(
         data: *mut c_void,
         width: usize,
         height: usize,

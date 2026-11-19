@@ -133,6 +133,20 @@ pub fn run(ru: bool) -> Vec<Check> {
             "\"OpenRDP Microphone\" is missing: the client's microphone reaches no app"
         },
     );
+    let camera = crate::camera::device_present();
+    add(
+        pick(camera, Mark::Warn),
+        if camera {
+            "Камера клиента: «OBS Virtual Camera» есть, выберите её в звонке"
+        } else {
+            "Нет «OBS Virtual Camera»: камера клиента не дойдёт до приложений. Установите OBS Studio, один раз нажмите в нём «Start Virtual Camera» и разрешите расширение в Системных настройках"
+        },
+        if camera {
+            "Client camera: \"OBS Virtual Camera\" is there, pick it in a call"
+        } else {
+            "\"OBS Virtual Camera\" is missing: the client's camera reaches no app. Install OBS Studio, click Start Virtual Camera there once and allow its extension in System Settings"
+        },
+    );
     let autorestart = pmset("autorestart").as_deref() == Some("1");
     add(
         pick(autorestart, Mark::Warn),

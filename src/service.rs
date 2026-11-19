@@ -409,6 +409,7 @@ fn info_plist(version: &str) -> String {
     <key>CFBundleShortVersionString</key><string>{version}</string>
     <key>CFBundleVersion</key><string>{version}</string>
     <key>LSUIElement</key><true/>
+    <key>NSCameraUsageDescription</key><string>Чтобы показывать приложениям этого Мака камеру подключённого клиента через OBS Virtual Camera.</string>
 </dict>
 </plist>
 "#

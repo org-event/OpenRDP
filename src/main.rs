@@ -2,6 +2,7 @@
 
 mod avc444;
 mod broker;
+mod camera;
 mod capture;
 mod checkup;
 mod client_options;
@@ -91,6 +92,7 @@ OPTIONS:
   --no-sound          do not play the Mac's sound on the client
   --no-microphone     do not offer the client's microphone to the Mac as
                       OpenRDP Microphone
+  --no-camera         do not show the client's camera in OBS Virtual Camera
   --no-clipboard      do not share the clipboard (Universal Clipboard between
                       Macs on one Apple ID fights with it)
   --test-pattern      send a synthetic picture instead of the screen
@@ -128,6 +130,7 @@ struct Args {
     clipboard: bool,
     sound: bool,
     microphone: bool,
+    camera: bool,
     drives: bool,
     curtain: curtain::Policy,
     cert: Option<std::path::PathBuf>,
@@ -187,6 +190,7 @@ fn parse_args(args: Vec<std::ffi::OsString>) -> anyhow::Result<Option<Args>> {
         clipboard: !args.contains("--no-clipboard"),
         sound: !args.contains("--no-sound"),
         microphone: !args.contains("--no-microphone"),
+        camera: !args.contains("--no-camera"),
         drives: !args.contains("--no-drives"),
         curtain: args
             .opt_value_from_str("--curtain")?
@@ -451,6 +455,7 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
         args.clipboard = false;
         args.sound = false;
         args.microphone = false;
+        args.camera = false;
         args.drives = false;
         args.curtain = curtain::Policy::Never;
         args.update = update::Mode::Off;
@@ -497,7 +502,9 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
         builder.with_tls(acceptor)
     };
     let _awake = power::Awake::system();
-    let mut server = builder
+    let camera = args.camera.then(camera::CameraFactory::default);
+    let camera_events = camera.as_ref().map(camera::CameraFactory::sender_slot);
+    let builder = builder
         .with_input_handler(MacInput::new(screen, advanced_input, Arc::clone(&options)))
         .with_display_handler(MacDisplay::new(config, Arc::clone(&shared)))
         .with_gfx_factory(Some(Box::new(GfxFactory::new(shared))))
@@ -517,8 +524,15 @@ async fn serve(argv: Vec<std::ffi::OsString>) -> anyhow::Result<()> {
         .with_rdpeai_factory(
             args.microphone
                 .then(|| Box::new(microphone::MicrophoneFactory::default()) as Box<_>),
-        )
-        .build();
+        );
+    let builder = match camera {
+        Some(camera) => builder.with_dynamic_channel_factory(Box::new(camera)),
+        None => builder,
+    };
+    let mut server = builder.build();
+    if let Some(slot) = camera_events {
+        *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(server.event_sender().clone());
+    }
     let accounts_path = users::path()?;
     let accounts = accounts(&accounts_path, args.user.as_deref(), args.pass.as_deref())?;
     server.set_credential_list(users::credentials(&accounts));

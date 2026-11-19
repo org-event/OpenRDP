@@ -162,15 +162,27 @@ final class AppModel: ObservableObject {
             launchError = "sdl-freerdp не найден. Установите FreeRDP: brew install freerdp"
             return
         }
-        // sdl-freerdp records in this app's name, and checks the permission
-        // once, when it starts: ask before, or the first session has no microphone.
-        if server.microphone, AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
-            AVCaptureDevice.requestAccess(for: .audio) { _ in
-                DispatchQueue.main.async { self.launch(server, binary: binary) }
-            }
+        // sdl-freerdp records in this app's name, and checks the microphone
+        // permission once, when it starts: ask before, or the first session has
+        // no microphone. The camera is asked for here too, so its prompt does not
+        // come in the middle of a call.
+        var media: [AVMediaType] = []
+        if server.microphone { media.append(.audio) }
+        if server.camera { media.append(.video) }
+        ask(media.filter { AVCaptureDevice.authorizationStatus(for: $0) == .notDetermined }) {
+            self.launch(server, binary: binary)
+        }
+    }
+
+    /// Asks for each permission in turn, then runs `done` on the main queue.
+    private func ask(_ media: [AVMediaType], then done: @escaping () -> Void) {
+        guard let first = media.first else {
+            done()
             return
         }
-        launch(server, binary: binary)
+        AVCaptureDevice.requestAccess(for: first) { _ in
+            DispatchQueue.main.async { self.ask(Array(media.dropFirst()), then: done) }
+        }
     }
 
     private func launch(_ server: Server, binary: URL) {
