@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.2-beta.1] - 2026-11-19
+
+### Fixed
+
+- OpenRDP Client: in a call on the remote Mac, the others no longer hear themselves echo. The call's sound played from this Mac's speakers went back into its microphone. The microphone now records through macOS voice processing (FaceTime's echo cancellation and noise suppression). If that can't start, it records as before.
+
 ## [1.7.1] - 2026-11-18
 
 The betas 1.7.1-beta.1 to beta.6 below, for the stable channel. In short:
@@ -339,7 +345,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.1...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.2-beta.1...HEAD
+[1.7.2-beta.1]: https://github.com/org-event/OpenRDP/compare/v1.7.1...v1.7.2-beta.1
 [1.7.1]: https://github.com/org-event/OpenRDP/compare/v1.7.0...v1.7.1
 [1.7.1-beta.6]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.5...v1.7.1-beta.6
 [1.7.1-beta.5]: https://github.com/org-event/OpenRDP/compare/v1.7.1-beta.4...v1.7.1-beta.5

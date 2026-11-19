@@ -1,0 +1,240 @@
+Record the microphone through macOS voice processing, so it cancels echo.
+
+The sound of a call that the server plays from this Mac's speakers reached the
+microphone again, and everyone else in the call heard themselves with a strong
+delay. FreeRDP recorded through a plain AudioQueue. Now it records through
+Apple's VoiceProcessingIO unit (FaceTime's echo cancellation, noise
+suppression and gain control), with ducking of other sound turned down to the
+minimum. If the unit cannot start, the old AudioQueue recorder is used.
+
+diff -ru a/channels/audin/client/mac/audin_mac.m b/channels/audin/client/mac/audin_mac.m
+--- a/channels/audin/client/mac/audin_mac.m	2026-11-19 16:53:43
++++ b/channels/audin/client/mac/audin_mac.m	2026-11-19 16:54:17
+@@ -81,8 +81,18 @@
+ 	AudioQueueRef audioQueue;
+ 	AudioStreamBasicDescription audioFormat;
+ 	AudioQueueBufferRef audioBuffers[MAC_AUDIO_QUEUE_NUM_BUFFERS];
++
++	/* OpenRDP: recording through voice processing, see audin_mac_voice_open. */
++	AudioUnit voiceUnit;
++	float *voiceIn;
++	INT16 *voicePacket;
++	UINT32 voiceFrames;
++	UINT32 voiceFill;
+ } AudinMacDevice;
+ 
++/* OpenRDP: the most frames voice processing hands over in one call. */
++#define MAC_VOICE_MAX_FRAMES 4096
++
+ static AudioFormatID audin_mac_get_format(const AUDIO_FORMAT *format)
+ {
+ 	switch (format->wFormatTag)
+@@ -195,6 +205,180 @@
+ 	}
+ }
+ 
++/* OpenRDP: what the server's sound plays from this Mac's speakers is what its microphone hears
++ * back, and the far end of a call heard itself as a strong echo. Apple's voice processing unit
++ * (as FaceTime uses) cancels what this Mac plays from what it records, so the microphone goes
++ * through it. It hands over mono floats; they are sent as the 16-bit PCM agreed with the server,
++ * one channel copied to all, in packets of FramesPerPacket. */
++static OSStatus audin_mac_voice_input(void *ref, AudioUnitRenderActionFlags *flags,
++                                      const AudioTimeStamp *timestamp, UInt32 bus, UInt32 frames,
++                                      AudioBufferList *unused)
++{
++	AudinMacDevice *mac = (AudinMacDevice *)ref;
++	(void)unused;
++
++	if (frames > MAC_VOICE_MAX_FRAMES)
++		return kAudio_ParamError;
++
++	AudioBufferList list;
++	list.mNumberBuffers = 1;
++	list.mBuffers[0].mNumberChannels = 1;
++	list.mBuffers[0].mDataByteSize = frames * sizeof(float);
++	list.mBuffers[0].mData = mac->voiceIn;
++	const OSStatus status = AudioUnitRender(mac->voiceUnit, flags, timestamp, bus, frames, &list);
++	if (status != noErr)
++		return status;
++
++	const UINT32 channels = mac->format.nChannels;
++	for (UInt32 i = 0; i < frames; i++)
++	{
++		float sample = mac->voiceIn[i];
++		if (sample > 1.0f)
++			sample = 1.0f;
++		else if (sample < -1.0f)
++			sample = -1.0f;
++		const INT16 value = (INT16)lrintf(sample * 32767.0f);
++		for (UINT32 c = 0; c < channels; c++)
++			mac->voicePacket[mac->voiceFill * channels + c] = value;
++
++		if (++mac->voiceFill == mac->voiceFrames)
++		{
++			const UINT error = mac->receive(&mac->format, (const BYTE *)mac->voicePacket,
++			                                mac->voiceFill * channels * sizeof(INT16),
++			                                mac->user_data);
++			mac->voiceFill = 0;
++			if (error)
++				WLog_ERR(TAG, "mac->receive failed with error %" PRIu32 "", error);
++		}
++	}
++	return noErr;
++}
++
++/* OpenRDP: the unit plays as well as records; it is given silence to play. */
++static OSStatus audin_mac_voice_silence(void *ref, AudioUnitRenderActionFlags *flags,
++                                        const AudioTimeStamp *timestamp, UInt32 bus, UInt32 frames,
++                                        AudioBufferList *data)
++{
++	(void)ref;
++	(void)timestamp;
++	(void)bus;
++	(void)frames;
++	for (UInt32 i = 0; i < data->mNumberBuffers; i++)
++		memset(data->mBuffers[i].mData, 0, data->mBuffers[i].mDataByteSize);
++	*flags |= kAudioUnitRenderAction_OutputIsSilence;
++	return noErr;
++}
++
++static void audin_mac_voice_close(AudinMacDevice *mac)
++{
++	if (mac->voiceUnit)
++	{
++		AudioOutputUnitStop(mac->voiceUnit);
++		AudioUnitUninitialize(mac->voiceUnit);
++		AudioComponentInstanceDispose(mac->voiceUnit);
++		mac->voiceUnit = nullptr;
++	}
++	free(mac->voiceIn);
++	mac->voiceIn = nullptr;
++	free(mac->voicePacket);
++	mac->voicePacket = nullptr;
++	mac->voiceFill = 0;
++}
++
++static BOOL audin_mac_voice_set(AudinMacDevice *mac, AudioUnitPropertyID property,
++                                AudioUnitScope scope, AudioUnitElement element, const void *value,
++                                UInt32 size, const char *what)
++{
++	const OSStatus status =
++	    AudioUnitSetProperty(mac->voiceUnit, property, scope, element, value, size);
++	if (status != noErr)
++		WLog_WARN(TAG, "voice processing: %s failed [%" PRId32 "]", what, (INT32)status);
++	return status == noErr;
++}
++
++/* OpenRDP: FALSE leaves nothing open, and the plain recorder is used instead. */
++static BOOL audin_mac_voice_open(AudinMacDevice *mac)
++{
++	if (mac->format.wFormatTag != WAVE_FORMAT_PCM || mac->audioFormat.mBitsPerChannel != 16 ||
++	    mac->format.nChannels == 0)
++		return FALSE;
++
++	AudioComponentDescription desc = { kAudioUnitType_Output, kAudioUnitSubType_VoiceProcessingIO,
++		                               kAudioUnitManufacturer_Apple, 0, 0 };
++	AudioComponent component = AudioComponentFindNext(nullptr, &desc);
++	if (!component || AudioComponentInstanceNew(component, &mac->voiceUnit) != noErr)
++	{
++		mac->voiceUnit = nullptr;
++		WLog_WARN(TAG, "voice processing: no such unit");
++		return FALSE;
++	}
++
++	mac->voiceFrames = mac->FramesPerPacket;
++	if (mac->voiceFrames == 0)
++		mac->voiceFrames = mac->format.nSamplesPerSec / 50;
++	mac->voiceIn = calloc(MAC_VOICE_MAX_FRAMES, sizeof(float));
++	mac->voicePacket = calloc(1ull * mac->voiceFrames * mac->format.nChannels, sizeof(INT16));
++	if (!mac->voiceIn || !mac->voicePacket)
++		goto fail;
++
++	const UInt32 on = 1;
++	const UInt32 maxFrames = MAC_VOICE_MAX_FRAMES;
++	AudioStreamBasicDescription mono = { 0 };
++	mono.mSampleRate = mac->format.nSamplesPerSec;
++	mono.mFormatID = kAudioFormatLinearPCM;
++	mono.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
++	mono.mBytesPerPacket = sizeof(float);
++	mono.mFramesPerPacket = 1;
++	mono.mBytesPerFrame = sizeof(float);
++	mono.mChannelsPerFrame = 1;
++	mono.mBitsPerChannel = 32;
++	const AURenderCallbackStruct input = { audin_mac_voice_input, mac };
++	const AURenderCallbackStruct output = { audin_mac_voice_silence, mac };
++
++	if (!audin_mac_voice_set(mac, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1,
++	                         &on, sizeof(on), "enable input") ||
++	    !audin_mac_voice_set(mac, kAudioUnitProperty_MaximumFramesPerSlice,
++	                         kAudioUnitScope_Global, 0, &maxFrames, sizeof(maxFrames),
++	                         "frames per slice") ||
++	    !audin_mac_voice_set(mac, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1,
++	                         &mono, sizeof(mono), "input format") ||
++	    !audin_mac_voice_set(mac, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0,
++	                         &mono, sizeof(mono), "output format") ||
++	    !audin_mac_voice_set(mac, kAudioOutputUnitProperty_SetInputCallback,
++	                         kAudioUnitScope_Global, 0, &input, sizeof(input), "input callback") ||
++	    !audin_mac_voice_set(mac, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0,
++	                         &output, sizeof(output), "output callback"))
++		goto fail;
++
++#if defined(MAC_OS_VERSION_14_0)
++	/* The unit turns other sound down while it records; the call itself is that sound here. */
++	if (@available(macOS 14.0, *))
++	{
++		const AUVoiceIOOtherAudioDuckingConfiguration ducking = {
++			false, kAUVoiceIOOtherAudioDuckingLevelMin
++		};
++		(void)audin_mac_voice_set(mac, kAUVoiceIOProperty_OtherAudioDuckingConfiguration,
++		                          kAudioUnitScope_Global, 0, &ducking, sizeof(ducking),
++		                          "ducking");
++	}
++#endif
++
++	OSStatus status = AudioUnitInitialize(mac->voiceUnit);
++	if (status == noErr)
++		status = AudioOutputUnitStart(mac->voiceUnit);
++	if (status != noErr)
++	{
++		WLog_WARN(TAG, "voice processing: start failed [%" PRId32 "]", (INT32)status);
++		goto fail;
++	}
++
++	WLog_INFO(TAG, "recording with voice processing (echo cancellation)");
++	return TRUE;
++fail:
++	audin_mac_voice_close(mac);
++	return FALSE;
++}
++
+ static UINT audin_mac_close(IAudinDevice *device)
+ {
+ 	UINT errCode = CHANNEL_RC_OK;
+@@ -213,6 +397,12 @@
+ 		return ERROR_INVALID_PARAMETER;
+ 	}
+ 
++	if (mac->voiceUnit)
++	{
++		audin_mac_voice_close(mac);
++		mac->isOpen = false;
++	}
++
+ 	if (mac->isOpen)
+ 	{
+ 		const OSStatus devStat = AudioQueueStop(mac->audioQueue, true);
+@@ -260,6 +450,14 @@
+ 
+ 	mac->receive = receive;
+ 	mac->user_data = user_data;
++
++	if (audin_mac_voice_open(mac))
++	{
++		mac->isOpen = true;
++		return CHANNEL_RC_OK;
++	}
++	WLog_WARN(TAG, "recording without echo cancellation");
++
+ 	devStat = AudioQueueNewInput(&(mac->audioFormat), mac_audio_queue_input_cb, mac, nullptr,
+ 	                             kCFRunLoopCommonModes, 0, &(mac->audioQueue));
+ 
