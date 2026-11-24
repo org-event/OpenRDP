@@ -221,6 +221,11 @@ impl DavMetaData for Meta {
     fn is_dir(&self) -> bool {
         self.dir
     }
+
+    /// The client's file system follows links itself: RDPDR has no links.
+    fn is_symlink(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Debug)]
@@ -494,6 +499,11 @@ impl DavFileSystem for DriveFs {
             Ok(stream)
         }
         .boxed()
+    }
+
+    /// The same as `metadata`: RDPDR shows no links.
+    fn symlink_metadata<'a>(&'a self, path: &'a DavPath) -> FsFuture<'a, Box<dyn DavMetaData>> {
+        self.metadata(path)
     }
 
     fn metadata<'a>(&'a self, path: &'a DavPath) -> FsFuture<'a, Box<dyn DavMetaData>> {
