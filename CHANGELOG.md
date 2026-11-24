@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.7.2-beta.3] - 2026-11-24
+
 ### Fixed
 
 - The keyboard layout could stop switching for good: a server started while the Mac showed its lock screen, which forces ABC, kept ABC as the current layout, because the notification that it changed back never reaches a process whose main thread runs tokio. Each ⌘Space then selected the layout that was already on. The switch now happens in a short-lived `openrdp --select-input-source` process, which always reads the real layout; it takes about 50 ms.
@@ -361,7 +363,8 @@ First release.
 - CI on Apple Silicon runners, release builds, Dependabot and cargo-deny.
 - Licenses (MIT OR Apache-2.0), English README, contributing guide, security policy.
 
-[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.2-beta.2...HEAD
+[Unreleased]: https://github.com/org-event/OpenRDP/compare/v1.7.2-beta.3...HEAD
+[1.7.2-beta.3]: https://github.com/org-event/OpenRDP/compare/v1.7.2-beta.2...v1.7.2-beta.3
 [1.7.2-beta.2]: https://github.com/org-event/OpenRDP/compare/v1.7.2-beta.1...v1.7.2-beta.2
 [1.7.2-beta.1]: https://github.com/org-event/OpenRDP/compare/v1.7.1...v1.7.2-beta.1
 [1.7.1]: https://github.com/org-event/OpenRDP/compare/v1.7.0...v1.7.1
