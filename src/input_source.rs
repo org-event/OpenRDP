@@ -139,7 +139,7 @@ fn select_in_helper(forward: bool) {
 }
 
 /// `openrdp --select-input-source next|previous`: the helper's side. Prints
-/// "<from> -> <to>" and fails when nothing was switched.
+/// `from -> to` (input source ids) and fails when nothing was switched.
 pub fn run_helper(direction: Option<&str>) -> anyhow::Result<()> {
     let forward = match direction {
         Some("next") => true,
