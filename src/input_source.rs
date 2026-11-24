@@ -8,6 +8,7 @@
 use std::ffi::c_void;
 use std::ptr::NonNull;
 
+use anyhow::Context as _;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2_core_foundation::{CFArray, CFBoolean, CFRetained, CFString, CFType};
@@ -86,11 +87,80 @@ fn number(object: Retained<AnyObject>) -> Option<Retained<NSNumber>> {
     object.downcast::<NSNumber>().ok()
 }
 
-/// Selects the enabled keyboard input source after, or before, the current one.
+/// Selects the enabled keyboard input source after, or before, the current one,
+/// from a short-lived process of its own (`openrdp --select-input-source`).
+///
+/// A long-running process without a run loop keeps the layout it saw first:
+/// the server's main thread runs tokio, so the notification that the layout
+/// changed never reaches it. Started at the lock screen, which forces ABC, it
+/// then took ABC as current for good, and each shortcut selected the layout
+/// that was already on. A fresh process reads the real one every time.
 pub fn select(forward: bool) {
+    static WORKER: std::sync::OnceLock<Option<std::sync::mpsc::Sender<bool>>> =
+        std::sync::OnceLock::new();
+    let worker = WORKER.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<bool>();
+        std::thread::Builder::new()
+            .name("openrdp-input-source".into())
+            // One at a time, so quick presses switch in order.
+            .spawn(move || rx.iter().for_each(select_in_helper))
+            .map_err(|err| warn!(%err, "cannot start the input-source thread"))
+            .ok()?;
+        Some(tx)
+    });
+    if worker.as_ref().is_none_or(|tx| tx.send(forward).is_err()) {
+        select_here(forward);
+    }
+}
+
+fn select_in_helper(forward: bool) {
+    let direction = if forward { "next" } else { "previous" };
+    let output = std::env::current_exe().and_then(|exe| {
+        std::process::Command::new(exe)
+            .args(["--select-input-source", direction])
+            .stdin(std::process::Stdio::null())
+            .output()
+    });
+    match output {
+        Ok(output) if output.status.success() => {
+            let line = String::from_utf8_lossy(&output.stdout);
+            info!(layouts = %line.trim(), "input source switched");
+        }
+        Ok(output) => warn!(
+            status = %output.status,
+            stderr = %String::from_utf8_lossy(&output.stderr).trim(),
+            "cannot switch the input source"
+        ),
+        Err(err) => {
+            warn!(%err, "cannot start the input-source helper; switching here");
+            select_here(forward);
+        }
+    }
+}
+
+/// `openrdp --select-input-source next|previous`: the helper's side. Prints
+/// "<from> -> <to>" and fails when nothing was switched.
+pub fn run_helper(direction: Option<&str>) -> anyhow::Result<()> {
+    let forward = match direction {
+        Some("next") => true,
+        Some("previous") => false,
+        other => anyhow::bail!("expected next or previous, got {other:?}"),
+    };
+    let (from, to) = select_here(forward).context("no input source to switch to")?;
+    println!(
+        "{} -> {}",
+        from.as_deref().unwrap_or("?"),
+        to.as_deref().unwrap_or("?")
+    );
+    Ok(())
+}
+
+/// Selects the source after, or before, the current one in this process, and
+/// returns (from, to) when it did.
+fn select_here(forward: bool) -> Option<(Option<String>, Option<String>)> {
     let sources = keyboard_sources();
     if sources.len() < 2 {
-        return;
+        return None;
     }
     let current = current_id();
     let count = sources.len();
@@ -103,9 +173,10 @@ pub fn select(forward: bool) {
     // SAFETY: `next` is an input source from TISCreateInputSourceList.
     let status = unsafe { TISSelectInputSource(next) };
     if status == 0 {
-        info!(from = ?current, to = ?source_id(next), "input source switched");
+        Some((current, source_id(next)))
     } else {
         warn!(status, "cannot switch the input source");
+        None
     }
 }
 
@@ -170,10 +241,10 @@ mod tests {
         let before = current_id();
         let count = keyboard_sources().len();
         println!("current {before:?}, {count} sources");
-        select(true);
+        select_here(true);
         let after = current_id();
         println!("after {after:?}");
-        select(false);
+        select_here(false);
         assert_ne!(before, after);
         assert_eq!(current_id(), before);
     }

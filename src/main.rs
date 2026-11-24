@@ -302,6 +302,10 @@ fn main() -> anyhow::Result<()> {
             println!("{}", checkup::report(ru, &checkup::run(ru)));
             return Ok(());
         }
+        // A layout switch for the server, in a process of its own (see input_source::select).
+        Some("--select-input-source") => {
+            return input_source::run_helper(argv.get(1).and_then(|arg| arg.to_str()));
+        }
         // The install's Screen Recording check, in a process of its own.
         Some("--check-capture") => {
             std::process::exit(if setup::capture_granted_here() { 0 } else { 1 });
