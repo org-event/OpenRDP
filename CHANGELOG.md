@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- The keyboard layout could stop switching for good: a server started while the Mac showed its lock screen, which forces ABC, kept ABC as the current layout, because the notification that it changed back never reaches a process whose main thread runs tokio. Each ⌘Space then selected the layout that was already on. The switch now happens in a short-lived `openrdp --select-input-source` process, which always reads the real layout; it takes about 50 ms.
+
 ## [1.7.2-beta.2] - 2026-11-24
 
 ### Added
